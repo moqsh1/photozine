@@ -48,11 +48,12 @@ const LAYOUTS: { id: LayoutId; label: string }[] = [
   { id: "two-cols", label: "Pair" },
   { id: "two-rows", label: "Stack" },
   { id: "three-banner", label: "Banner" },
+  { id: "three-base", label: "Base" },
   { id: "four", label: "Grid" },
 ];
 
 export function MenuBar(props: MenuBarProps) {
-  const [open, setOpen] = useState<string | null>("File");
+  const [open, setOpen] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

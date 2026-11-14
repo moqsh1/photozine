@@ -9,6 +9,7 @@ export type LayoutId =
   | "two-rows"
   | "three-feature"
   | "three-banner"
+  | "three-base"
   | "three-cols"
   | "four";
 

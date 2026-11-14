@@ -70,6 +70,17 @@ export const LAYOUTS: LayoutDef[] = [
     ],
   },
   {
+    id: "three-base",
+    name: "Base",
+    hint: "Two photos over a wide one",
+    slots: 3,
+    areas: [
+      { x: 0, y: 0, w: 0.5, h: 0.42 },
+      { x: 0.5, y: 0, w: 0.5, h: 0.42 },
+      { x: 0, y: 0.42, w: 1, h: 0.58 },
+    ],
+  },
+  {
     id: "three-cols",
     name: "Columns",
     hint: "Three columns",
@@ -118,7 +129,11 @@ export function areasFor(
   const hasR = typeof splitR === "number" && Number.isFinite(splitR);
   const hasW = typeof splitW === "number" && Number.isFinite(splitW);
   if (!has && !hasL && !hasR && !hasW) return base;
-  const s = clamp(has ? (split as number) : layoutId === "three-banner" ? 0.58 : 0.5, 0.18, 0.82);
+  const s = clamp(
+    has ? (split as number) : layoutId === "three-banner" ? 0.58 : layoutId === "three-base" ? 0.42 : 0.5,
+    0.18,
+    0.82,
+  );
   const width = clamp(hasW ? (splitW as number) : 0.5, 0.18, 0.82);
   if (layoutId === "two-cols") {
     return [
@@ -142,6 +157,15 @@ export function areasFor(
       { x: width, y: s, w: 1 - width, h: right },
     ];
   }
+  if (layoutId === "three-base") {
+    const left = s * clamp(hasL ? (splitL as number) : 1, 0.2, 1);
+    const right = s * clamp(hasR ? (splitR as number) : 1, 0.2, 1);
+    return [
+      { x: 0, y: 0, w: width, h: left },
+      { x: width, y: 0, w: 1 - width, h: right },
+      { x: 0, y: s, w: 1, h: 1 - s },
+    ];
+  }
   if (layoutId === "four") {
     const right = clamp(hasR ? (splitR as number) : s, 0.18, 0.82);
     return [
@@ -156,7 +180,7 @@ export function areasFor(
 
 export function splitAxis(layoutId: LayoutId): "x" | "y" | null {
   if (layoutId === "two-cols") return "x";
-  if (layoutId === "two-rows" || layoutId === "three-banner" || layoutId === "four") return "y";
+  if (layoutId === "two-rows" || layoutId === "three-banner" || layoutId === "three-base" || layoutId === "four") return "y";
   return null;
 }
 

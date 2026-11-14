@@ -819,7 +819,15 @@ export const useBook = create<BookState>((set, get) => {
     const prevCount = LAYOUT_BY_ID[current[index].layout]?.slots ?? current[index].slots.length;
     let pages: Page[];
     if (nextCount === prevCount) {
-      pages = current.map((page) => (page.id === id ? withLayout(page, layout) : page));
+      const page = current[index];
+      const flipped =
+        (page.layout === "three-banner" && layout === "three-base") ||
+        (page.layout === "three-base" && layout === "three-banner");
+      const order = page.layout === "three-banner" ? [1, 2, 0] : [2, 0, 1];
+      const slots = flipped ? order.map((slotIndex) => page.slots[slotIndex] ?? emptySlot()) : page.slots;
+      const selected = get().selectedSlot;
+      pages = current.map((item) => (item.id === id ? withLayout({ ...item, slots }, layout) : item));
+      if (flipped && selected != null) set({ selectedSlot: order.indexOf(selected) });
     } else {
       const later: Slot[] = [];
       for (let cursor = index + 1; cursor < current.length; cursor += 1) {

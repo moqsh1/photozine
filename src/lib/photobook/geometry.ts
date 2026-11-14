@@ -108,6 +108,63 @@ function trioHeight(contentW: number, gap: number, caption: number, aspects: [nu
   return topImg + caption + gap + botImg + caption;
 }
 
+/** Two portraits over one landscape. Aspects are left, right, then the wide photo. */
+export function portraitsOverLandscapeAspects(
+  photos: Array<{ w: number; h: number } | undefined>,
+): [number, number, number] | null {
+  if (photos.length < 3) return null;
+  const [left, right, wide] = photos;
+  if (!left || !right || !wide) return null;
+  if (left.w < 1 || left.h < 1 || right.w < 1 || right.h < 1 || wide.w < 1 || wide.h < 1) return null;
+  if (!(left.w <= left.h && right.w <= right.h && wide.w > wide.h)) return null;
+  return [left.w / left.h, right.w / right.h, wide.w / wide.h];
+}
+
+export function fitPortraitsOverLandscape(
+  pageW: number,
+  pageH: number,
+  margin: number,
+  gap: number,
+  captionIn: number,
+  aspects: [number, number, number],
+): Rect[] {
+  const contentW = Math.max(0.4, pageW - margin * 2);
+  const contentH = Math.max(0.4, pageH - margin * 2);
+  const caption = Math.max(0.12, Math.min(captionIn, contentH * 0.18));
+  const safe = aspects.map((aspect) => Math.max(0.2, aspect)) as [number, number, number];
+  let low = 0.05;
+  let high = 1;
+  let scale = 0.05;
+  for (let step = 0; step < 28; step += 1) {
+    const mid = (low + high) / 2;
+    if (baseHeight(contentW, gap, caption, safe, mid) <= contentH) {
+      scale = mid;
+      low = mid;
+    } else high = mid;
+  }
+  const innerW = contentW * scale;
+  const topW = Math.max(0.2, (innerW - gap) / 2);
+  const topImg = topW / Math.max(safe[0], safe[1]);
+  const botImg = innerW / safe[2];
+  const total = topImg + caption + gap + botImg + caption;
+  const x0 = margin + (contentW - innerW) / 2;
+  const y0 = margin + Math.max(0, (contentH - total) / 2);
+  const rowY = y0 + topImg + caption + gap;
+  return [
+    { x: x0, y: y0, w: topW, h: topImg + caption },
+    { x: x0 + topW + gap, y: y0, w: topW, h: topImg + caption },
+    { x: x0, y: rowY, w: innerW, h: botImg + caption },
+  ];
+}
+
+function baseHeight(contentW: number, gap: number, caption: number, aspects: [number, number, number], scale: number) {
+  const innerW = contentW * scale;
+  const topW = Math.max(0.2, (innerW - gap) / 2);
+  const topImg = topW / Math.max(aspects[0], aspects[1]);
+  const botImg = innerW / aspects[2];
+  return topImg + caption + gap + botImg + caption;
+}
+
 export function pageFrameRects(
   layout: LayoutId,
   split: number | null | undefined,
@@ -129,6 +186,10 @@ export function pageFrameRects(
   if (layout === "three-banner" && !custom) {
     const aspects = landscapeOverPortraitAspects(photos);
     if (aspects) return fitLandscapeOverPortraits(pageW, pageH, margin, gap, captionIn, aspects);
+  }
+  if (layout === "three-base" && !custom) {
+    const aspects = portraitsOverLandscapeAspects(photos);
+    if (aspects) return fitPortraitsOverLandscape(pageW, pageH, margin, gap, captionIn, aspects);
   }
   return cellRects(areasFor(layout, split, splitL, splitR, splitW), pageW, pageH, margin, gap);
 }

@@ -272,19 +272,27 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
         {props.page && props.page.layout !== "one" && props.page.layout !== "half" && (
           <div className="mt-4 border-t border-line pt-4">
             <InchSlider
-              label={props.page.layout === "two-cols" ? "Left frame" : props.page.layout === "four" ? "Left top" : "Top frame"}
-              display={`${Math.round((props.page.split ?? (props.page.layout === "three-banner" ? 0.58 : 0.5)) * 100)}%`}
+              label={
+                props.page.layout === "two-cols"
+                  ? "Left frame"
+                  : props.page.layout === "four"
+                    ? "Left top"
+                    : props.page.layout === "three-base"
+                      ? "Top row"
+                      : "Top frame"
+              }
+              display={`${Math.round((props.page.split ?? (props.page.layout === "three-banner" ? 0.58 : props.page.layout === "three-base" ? 0.42 : 0.5)) * 100)}%`}
               min={0.18}
               max={0.82}
               step={0.01}
-              value={props.page.split ?? (props.page.layout === "three-banner" ? 0.58 : 0.5)}
+              value={props.page.split ?? (props.page.layout === "three-banner" ? 0.58 : props.page.layout === "three-base" ? 0.42 : 0.5)}
               onChange={(value) => props.onSplit(value, "top")}
             />
-            {props.page.layout === "three-banner" && (
+            {(props.page.layout === "three-banner" || props.page.layout === "three-base") && (
               <>
                 <InchSlider
                   className="mt-2"
-                  label="Lower left"
+                  label={props.page.layout === "three-base" ? "Upper left" : "Lower left"}
                   display={`${Math.round((props.page.splitL ?? 1) * 100)}%`}
                   min={0.2}
                   max={1}
@@ -294,7 +302,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
                 />
                 <InchSlider
                   className="mt-2"
-                  label="Lower right"
+                  label={props.page.layout === "three-base" ? "Upper right" : "Lower right"}
                   display={`${Math.round((props.page.splitR ?? 1) * 100)}%`}
                   min={0.2}
                   max={1}
@@ -316,7 +324,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
                 onChange={(value) => props.onSplit(value, "right")}
               />
             )}
-            {(props.page.layout === "three-banner" || props.page.layout === "four") && (
+            {(props.page.layout === "three-banner" || props.page.layout === "three-base" || props.page.layout === "four") && (
               <InchSlider
                 className="mt-2"
                 label="Left width"
