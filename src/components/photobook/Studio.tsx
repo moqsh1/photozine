@@ -30,17 +30,36 @@ export function Studio() {
   const [confirm, setConfirm] = useState<ConfirmKind>(null);
   const [pendingProject, setPendingProject] = useState<File | null>(null);
   const [printPages, setPrintPages] = useState<Page[] | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [driveSavedAt, setDriveSavedAt] = useState<number | null>(null);
+  const [driveLoadedAt, setDriveLoadedAt] = useState<number | null>(null);
+  useEffect(() => {
+    const saved = Number(localStorage.getItem("pz-drive-saved"));
+    const loaded = Number(localStorage.getItem("pz-drive-loaded"));
+    if (Number.isFinite(saved) && saved > 0) setDriveSavedAt(saved);
+    if (Number.isFinite(loaded) && loaded > 0) setDriveLoadedAt(loaded);
+  }, []);
+  function markDrive(kind: "saved" | "loaded") {
+    const now = Date.now();
+    localStorage.setItem(kind === "saved" ? "pz-drive-saved" : "pz-drive-loaded", String(now));
+    if (kind === "saved") setDriveSavedAt(now);
+    else setDriveLoadedAt(now);
+  }
+  function driveClock(label: string, stamp: number | null) {
+    if (!stamp) return `${label} —`;
+    const time = new Date(stamp).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+    return `${label} ${time}`;
+  }
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMode, setExportMode] = useState<ExportMode>("current");
   const [picked, setPicked] = useState<string[]>([]);
   const [exportNote, setExportNote] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [handoff, setHandoff] = useState<{ url: string; name: string } | null>(null);
+  const [syncName, setSyncName] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   const [pickedPhotos, setPickedPhotos] = useState<string[]>([]);
   const [pagePicking, setPagePicking] = useState(false);
   const [pickedPages, setPickedPages] = useState<string[]>([]);
-  const [syncName, setSyncName] = useState<string | null>(null);
   const onPhotoSelection = useCallback((ids: string[]) => setPickedPhotos(ids), []);
   const pdfBlob = useRef<Blob | null>(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
@@ -253,7 +272,10 @@ export function Studio() {
       if (!driveOn.current || driveBusy.current) return;
       driveBusy.current = true;
       void saveBookToDrive(saved, photos, getBlob, drivePercent("Saving to Drive"))
-        .then(() => setProblem("Saved to Drive"))
+        .then(() => {
+          markDrive("saved");
+          setProblem("Saved to Drive");
+        })
         .catch((error) => setProblem(error instanceof Error ? error.message : "Could not save to Drive."))
         .finally(() => {
           driveBusy.current = false;
@@ -279,6 +301,7 @@ export function Studio() {
     try {
       await saveBookToDrive(snapshot(), book.photos, getBlob, drivePercent("Saving to Drive"));
       driveOn.current = true;
+      markDrive("saved");
       setProblem("Saved to Drive");
     } catch (error) {
       complain(error instanceof Error ? error.message : "Could not save to Drive.");
@@ -294,6 +317,7 @@ export function Studio() {
       const remote = await loadBookFromDrive(drivePercent("Loading from Drive"), new Set(await listBlobIds()));
       driveOn.current = true;
       await book.mergeDriveBook(remote.book, remote.photos, remote.catalog);
+      markDrive("loaded");
       setProblem(remote.photos.length === 0 ? "Loaded the book" : `Loaded ${remote.photos.length} new photos`);
     } catch (error) {
       complain(error instanceof Error ? error.message : "Could not load from Drive.");
@@ -489,12 +513,18 @@ export function Studio() {
             onChange={(event) => book.setTitle(event.target.value)}
           />
         </label>
-        <button type="button" className="btn btn-quiet px-3" onClick={() => void onDriveLoad()} aria-label="Load from Google Drive">
-          Load Drive
-        </button>
-        <button type="button" className="btn btn-quiet px-3" onClick={() => void onDriveSave()} aria-label="Save to Google Drive">
-          Save Drive
-        </button>
+        <div className="flex flex-col items-center leading-none">
+          <button type="button" className="btn btn-quiet px-3" onClick={() => void onDriveLoad()} aria-label="Load from Google Drive">
+            Load Drive
+          </button>
+          <span className="mt-0.5 text-[10px] text-muted">{driveClock("Last loaded", driveLoadedAt)}</span>
+        </div>
+        <div className="flex flex-col items-center leading-none">
+          <button type="button" className="btn btn-quiet px-3" onClick={() => void onDriveSave()} aria-label="Save to Google Drive">
+            Save Drive
+          </button>
+          <span className="mt-0.5 text-[10px] text-muted">{driveClock("Last saved", driveSavedAt)}</span>
+        </div>
         <button type="button" className="btn btn-quiet px-3" onClick={book.undo} disabled={!book.canUndo} aria-label="Undo">
           <Undo2 className="size-4" aria-hidden="true" />
           Undo
