@@ -21,6 +21,7 @@ export type Slot = {
   panY: number;
   turn: 0 | 1 | 2 | 3;
   yearOnly?: boolean;
+  noCaption?: boolean;
   adjust?: Adjust;
 };
 

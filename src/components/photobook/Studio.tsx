@@ -421,7 +421,7 @@ export function Studio() {
       busy={book.importing != null}
       onQuery={book.setQuery}
       onFilter={book.setFilter}
-      onFocus={book.focusPhoto}
+      onFocus={book.showPhoto}
       onAdd={openFiles}
       onSamples={() => {
         void book.loadSamples();

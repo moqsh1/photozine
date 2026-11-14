@@ -53,6 +53,15 @@ export const Library = memo(function Library({
   onSelection,
 }: LibraryProps) {
   const placed = usedIds(placedSignature);
+  const pageOf = useMemo(() => {
+    const map = new Map<string, number>();
+    pages.forEach((page, index) => {
+      for (const slot of page.slots) {
+        if (slot.photoId && !map.has(slot.photoId)) map.set(slot.photoId, index + 1);
+      }
+    });
+    return map;
+  }, [pages]);
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
@@ -277,7 +286,11 @@ export const Library = memo(function Library({
                   {picking && picked.includes(photo.id) && (
                     <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-accent text-[10px] text-page">✓</span>
                   )}
-                  {placed.has(photo.id) && <span className="absolute right-1 bottom-1 size-2 rounded-full bg-accent" />}
+                  {pageOf.has(photo.id) ? (
+                    <span className="absolute right-1 bottom-1 rounded-sm bg-ink/80 px-1 text-[10px] leading-4 text-page">
+                      {pageOf.get(photo.id)}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             ))}

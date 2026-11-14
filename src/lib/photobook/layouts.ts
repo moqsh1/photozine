@@ -177,15 +177,18 @@ function asSlot(value: unknown): Slot {
   if (!value || typeof value !== "object") return emptySlot();
   const slot = value as Partial<Slot>;
   const taken = typeof slot.takenAt === "number" && Number.isFinite(slot.takenAt) ? slot.takenAt : null;
+  const noCaption = slot.noCaption === true;
+  const raw = typeof slot.caption === "string" ? slot.caption.slice(0, 140) : "";
   return {
     photoId: typeof slot.photoId === "string" ? slot.photoId : null,
-    caption: captionForDate(typeof slot.caption === "string" ? slot.caption.slice(0, 140) : "", taken).slice(0, 140),
+    caption: (noCaption ? "" : captionForDate(raw, taken)).slice(0, 140),
     takenAt: taken,
     zoom: clamp(Number(slot.zoom) || 1, LIMITS.zoom.min, LIMITS.zoom.max),
     panX: clamp(Number(slot.panX) || 0, -1, 1),
     panY: clamp(Number(slot.panY) || 0, -1, 1),
     turn: slot.turn === 1 || slot.turn === 2 || slot.turn === 3 ? slot.turn : 0,
-    yearOnly: slot.yearOnly === true,
+    yearOnly: noCaption ? false : slot.yearOnly === true,
+    noCaption,
     adjust: readAdjust(slot.adjust),
   };
 }

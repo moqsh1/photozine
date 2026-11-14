@@ -67,6 +67,7 @@ type BookState = {
   selectSlot: (index: number) => void;
   clearSlotSelection: () => void;
   focusPhoto: (id: string) => void;
+  showPhoto: (id: string) => void;
   cancelPlacing: () => void;
   importFiles: (files: File[], captions?: Record<string, string>, into?: { pageId: string; index: number }) => Promise<void>;
   cancelImport: () => void;
@@ -499,6 +500,11 @@ export const useBook = create<BookState>((set, get) => {
         if (!slot.photoId) return slot;
         const takenAt = slot.takenAt ?? byId.get(slot.photoId) ?? null;
         if (takenAt == null) return slot;
+        if (slot.noCaption) {
+          if (slot.takenAt === takenAt && slot.caption === "") return slot;
+          changed = true;
+          return { ...slot, takenAt, caption: "" };
+        }
         const caption = captionForDate(slot.caption, takenAt).slice(0, 140);
         if (caption === slot.caption && slot.takenAt === takenAt) return slot;
         changed = true;
@@ -551,6 +557,15 @@ export const useBook = create<BookState>((set, get) => {
     set({ selectedSlot: null });
   },
   focusPhoto: (id) => set({ placingId: get().placingId === id ? null : id }),
+  showPhoto: (id) => {
+    for (const page of get().pages) {
+      const index = page.slots.findIndex((slot) => slot.photoId === id);
+      if (index < 0) continue;
+      set({ activePageId: page.id, selectedSlot: index, placingId: null });
+      return;
+    }
+    set({ placingId: get().placingId === id ? null : id });
+  },
   cancelPlacing: () => set({ placingId: null }),
   cancelImport: () => {
     importCancelled = true;
@@ -674,6 +689,7 @@ export const useBook = create<BookState>((set, get) => {
         if (!slot.photoId) return slot;
         const takenAt = slot.takenAt ?? known.get(slot.photoId) ?? null;
         if (takenAt == null) return slot;
+        if (slot.noCaption) return { ...slot, takenAt, caption: "" };
         return { ...slot, takenAt, caption: captionForDate(slot.caption, takenAt).slice(0, 140) };
       }),
     }));
@@ -973,7 +989,10 @@ export const useBook = create<BookState>((set, get) => {
   },
   setSlotCaption: (pageId, index, caption) => {
     set({
-      pages: patchSlot(get().pages, pageId, index, (slot) => ({ ...slot, caption: caption.slice(0, 140) })),
+      pages: patchSlot(get().pages, pageId, index, (slot) => {
+        const text = caption.slice(0, 140);
+        return { ...slot, caption: text, noCaption: text.trim() === "", yearOnly: text.trim() ? slot.yearOnly : false };
+      }),
     });
     persistLater();
   },
@@ -982,7 +1001,7 @@ export const useBook = create<BookState>((set, get) => {
     if (!id) return;
     set({
       pages: get().pages.map((page) =>
-        page.id === id ? { ...page, slots: page.slots.map((slot) => ({ ...slot, caption: "" })) } : page,
+        page.id === id ? { ...page, slots: page.slots.map((slot) => ({ ...slot, caption: "", yearOnly: false, noCaption: true })) } : page,
       ),
     });
     persistLater();
@@ -992,14 +1011,18 @@ export const useBook = create<BookState>((set, get) => {
     if (wanted.size === 0) return;
     set({
       pages: get().pages.map((page) =>
-        wanted.has(page.id) ? { ...page, slots: page.slots.map((slot) => ({ ...slot, caption: "", yearOnly: false })) } : page,
+        wanted.has(page.id) ? { ...page, slots: page.slots.map((slot) => ({ ...slot, caption: "", yearOnly: false, noCaption: true })) } : page,
       ),
     });
     persistLater();
   },
   setYearOnly: (pageId, index, yearOnly) => {
     set({
-      pages: patchSlot(get().pages, pageId, index, (slot) => ({ ...slot, yearOnly })),
+      pages: patchSlot(get().pages, pageId, index, (slot) => ({
+        ...slot,
+        yearOnly,
+        noCaption: yearOnly ? false : slot.noCaption,
+      })),
     });
     persistLater();
   },
@@ -1007,10 +1030,15 @@ export const useBook = create<BookState>((set, get) => {
     const wanted = new Set(ids);
     if (wanted.size === 0) return;
     const text = caption.slice(0, 140);
+    const cleared = text.trim() === "";
     set({
       pages: get().pages.map((page) => ({
         ...page,
-        slots: page.slots.map((slot) => (slot.photoId && wanted.has(slot.photoId) ? { ...slot, caption: text } : slot)),
+        slots: page.slots.map((slot) =>
+          slot.photoId && wanted.has(slot.photoId)
+            ? { ...slot, caption: text, noCaption: cleared, yearOnly: cleared ? false : slot.yearOnly }
+            : slot,
+        ),
       })),
     });
     persistLater();
@@ -1024,6 +1052,7 @@ export const useBook = create<BookState>((set, get) => {
       ...page,
       slots: page.slots.map((slot) => {
         if (!slot.photoId || !wanted.has(slot.photoId)) return slot;
+        if (slot.noCaption) return { ...slot, takenAt, caption: "" };
         const previous = slot.takenAt != null ? formatHindiDate(slot.takenAt) : "";
         const caption =
           previous && slot.caption.includes(previous)
@@ -1066,7 +1095,7 @@ export const useBook = create<BookState>((set, get) => {
       pages: patchSlot(get().pages, pageId, index, (slot) => ({
         ...slot,
         takenAt,
-        caption: captionForDate(slot.caption, takenAt).slice(0, 140),
+        caption: slot.noCaption ? "" : captionForDate(slot.caption, takenAt).slice(0, 140),
       })),
     });
     persistLater();
