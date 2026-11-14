@@ -59,25 +59,45 @@ export async function connectDrive() {
   window.location.assign("/api/drive/start");
 }
 
-export async function saveBookToDrive(book: Book, photos: Photo[], readBlob: (id: string) => Promise<Blob | null>) {
+export type DriveProgress = (done: number, total: number) => void;
+
+export async function saveBookToDrive(
+  book: Book,
+  photos: Photo[],
+  readBlob: (id: string) => Promise<Blob | null>,
+  onProgress?: DriveProgress,
+) {
+  const total = Math.max(1, photos.length + 1);
+  onProgress?.(0, total);
   const { accessToken, folderId } = await getDriveAccess();
   const files = await listChildren(accessToken, folderId);
   const byName = new Map(files.map((file) => [file.name, file.id]));
   const listed: BookFile["photos"] = [];
+  let done = 0;
   for (const photo of photos) {
     const filename = `${photo.id}.jpg`;
     listed.push({ id: photo.id, name: photo.name, file: filename, takenAt: photo.takenAt, seq: photo.seq });
-    if (byName.has(filename)) continue;
-    const blob = await readBlob(photo.id);
-    if (!blob) continue;
-    await upload(accessToken, folderId, filename, blob);
+    if (!byName.has(filename)) {
+      const blob = await readBlob(photo.id);
+      if (blob) await upload(accessToken, folderId, filename, blob);
+    }
+    done += 1;
+    onProgress?.(done, total);
   }
   const payload: BookFile = { version: 1, updatedAt: Date.now(), book, photos: listed };
-  await upload(accessToken, folderId, "book.json", new Blob([JSON.stringify(payload)], { type: "application/json" }), byName.get("book.json"));
+  await upload(
+    accessToken,
+    folderId,
+    "book.json",
+    new Blob([JSON.stringify(payload)], { type: "application/json" }),
+    byName.get("book.json"),
+  );
+  onProgress?.(total, total);
   return payload.updatedAt;
 }
 
-export async function loadBookFromDrive() {
+export async function loadBookFromDrive(onProgress?: DriveProgress) {
+  onProgress?.(0, 1);
   const { accessToken, folderId } = await getDriveAccess();
   const files = await listChildren(accessToken, folderId);
   const bookFile = files.find((file) => file.name === "book.json");
@@ -85,18 +105,26 @@ export async function loadBookFromDrive() {
   const raw = await driveFetch(accessToken, `https://www.googleapis.com/drive/v3/files/${bookFile.id}?alt=media`);
   const parsed = (await raw.json()) as BookFile;
   if (!parsed || parsed.version !== 1 || !parsed.book) throw new Error("The Drive book file is damaged.");
+  const items = parsed.photos ?? [];
+  const total = Math.max(1, items.length + 1);
+  onProgress?.(1, total);
   const photos = [];
-  for (const item of parsed.photos ?? []) {
+  let done = 1;
+  for (const item of items) {
     const file = files.find((entry) => entry.name === item.file || entry.name === `${item.id}.jpg`);
-    if (!file) continue;
-    const media = await driveFetch(accessToken, `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
-    photos.push({
-      id: item.id,
-      name: item.name || "Photo",
-      blob: await media.blob(),
-      takenAt: typeof item.takenAt === "number" ? item.takenAt : null,
-      seq: typeof item.seq === "number" ? item.seq : photos.length + 1,
-    });
+    if (file) {
+      const media = await driveFetch(accessToken, `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
+      photos.push({
+        id: item.id,
+        name: item.name || "Photo",
+        blob: await media.blob(),
+        takenAt: typeof item.takenAt === "number" ? item.takenAt : null,
+        seq: typeof item.seq === "number" ? item.seq : photos.length + 1,
+      });
+    }
+    done += 1;
+    onProgress?.(done, total);
   }
+  onProgress?.(total, total);
   return { updatedAt: parsed.updatedAt ?? 0, book: parsed.book, photos };
 }

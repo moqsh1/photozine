@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LayoutId, Orientation } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -17,8 +17,7 @@ type MenuBarProps = {
   onSync: () => void;
   onLoadSync: () => void;
   onDriveConnect: () => void;
-  onDriveSave: () => void;
-  onDriveLoad: () => void;
+  status?: ReactNode;
   syncName: string | null;
   canSync: boolean;
   onAddPage: () => void;
@@ -75,8 +74,6 @@ export function MenuBar(props: MenuBarProps) {
         { label: props.syncName ? `Sync folder: ${props.syncName}` : "Sync folder", onClick: props.onSync, disabled: !props.canSync || props.busy },
         { label: "Load synced book", onClick: props.onLoadSync, disabled: !props.canSync || props.busy || !props.syncName },
         { label: "Connect Google Drive", onClick: props.onDriveConnect, disabled: props.busy },
-        { label: "Save to Drive", onClick: props.onDriveSave, disabled: props.busy },
-        { label: "Load from Drive", onClick: props.onDriveLoad, disabled: props.busy },
       ],
     },
     {
@@ -161,6 +158,9 @@ export function MenuBar(props: MenuBarProps) {
           )}
         </div>
       ))}
+      <div className="ml-auto flex min-w-0 items-center truncate px-3 text-sm tabular-nums" aria-live="polite">
+        {props.status}
+      </div>
     </div>
   );
 }

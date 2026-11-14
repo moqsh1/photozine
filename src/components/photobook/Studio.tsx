@@ -229,12 +229,20 @@ export function Studio() {
     }
   }
 
+  function drivePercent(label: string) {
+    return (done: number, total: number) => {
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      setProblem(`${label} ${pct}%`);
+    };
+  }
+
   const driveOn = useRef(false);
+  const driveBusy = useRef(false);
   useEffect(() => {
     const flag = new URLSearchParams(window.location.search).get("drive");
     if (flag === "connected") {
       driveOn.current = true;
-      setProblem("Google Drive connected. Changes save to your private Photozine folder.");
+      setProblem("Google Drive connected");
       const url = new URL(window.location.href);
       url.searchParams.delete("drive");
       window.history.replaceState({}, "", `${url.pathname}${url.search}`);
@@ -242,10 +250,14 @@ export function Studio() {
       setProblem("Google Drive was not connected.");
     }
     onBookCloud((saved, photos) => {
-      if (!driveOn.current) return;
-      void saveBookToDrive(saved, photos, getBlob).catch((error) => {
-        setProblem(error instanceof Error ? error.message : "Could not save to Drive.");
-      });
+      if (!driveOn.current || driveBusy.current) return;
+      driveBusy.current = true;
+      void saveBookToDrive(saved, photos, getBlob, drivePercent("Saving to Drive"))
+        .then(() => setProblem("Saved to Drive"))
+        .catch((error) => setProblem(error instanceof Error ? error.message : "Could not save to Drive."))
+        .finally(() => {
+          driveBusy.current = false;
+        });
     });
   }, []);
 
@@ -262,22 +274,31 @@ export function Studio() {
   }
 
   async function onDriveSave() {
+    if (driveBusy.current) return;
+    driveBusy.current = true;
     try {
-      await saveBookToDrive(snapshot(), book.photos, getBlob);
+      await saveBookToDrive(snapshot(), book.photos, getBlob, drivePercent("Saving to Drive"));
       driveOn.current = true;
-      setProblem("Saved to Google Drive.");
+      setProblem("Saved to Drive");
     } catch (error) {
       complain(error instanceof Error ? error.message : "Could not save to Drive.");
+    } finally {
+      driveBusy.current = false;
     }
   }
 
   async function onDriveLoad() {
+    if (driveBusy.current) return;
+    driveBusy.current = true;
     try {
-      const remote = await loadBookFromDrive();
+      const remote = await loadBookFromDrive(drivePercent("Loading from Drive"));
       driveOn.current = true;
       await book.loadProject(remote.book, remote.photos);
+      setProblem("Loaded from Drive");
     } catch (error) {
       complain(error instanceof Error ? error.message : "Could not load from Drive.");
+    } finally {
+      driveBusy.current = false;
     }
   }
 
@@ -468,6 +489,12 @@ export function Studio() {
             onChange={(event) => book.setTitle(event.target.value)}
           />
         </label>
+        <button type="button" className="btn btn-quiet px-3" onClick={() => void onDriveLoad()} aria-label="Load from Google Drive">
+          Load Drive
+        </button>
+        <button type="button" className="btn btn-quiet px-3" onClick={() => void onDriveSave()} aria-label="Save to Google Drive">
+          Save Drive
+        </button>
         <button type="button" className="btn btn-quiet px-3" onClick={book.undo} disabled={!book.canUndo} aria-label="Undo">
           <Undo2 className="size-4" aria-hidden="true" />
           Undo
@@ -512,10 +539,27 @@ export function Studio() {
         onSync={() => void onLinkSync()}
         onLoadSync={() => void onLoadSync()}
         onDriveConnect={() => void connectDrive()}
-        onDriveSave={() => void onDriveSave()}
-        onDriveLoad={() => void onDriveLoad()}
         syncName={syncName}
         canSync={syncSupported()}
+        status={
+          book.importing ? (
+            <>
+              Adding {book.importing.done} of {book.importing.total} · {progress}%
+              <button type="button" className="ml-2 underline" onClick={book.cancelImport}>
+                Stop
+              </button>
+            </>
+          ) : (
+            <>
+              {problem || book.notice}
+              {handoff && (
+                <a className="ml-2 font-medium text-accent underline" href={handoff.url} download={handoff.name}>
+                  Project file ready
+                </a>
+              )}
+            </>
+          )
+        }
         onAddPage={book.addPage}
         onDuplicate={book.duplicatePage}
         onDeletePage={book.deletePage}
@@ -538,37 +582,6 @@ export function Studio() {
         onDensity={book.setDensity}
         busy={book.preparingPrint || !book.ready || book.importing != null}
       />
-
-      {book.importing && (
-        <div className="no-print border-b border-line bg-surface px-4 py-2">
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <p className="tabular-nums">
-              Adding {book.importing.done} of {book.importing.total}
-            </p>
-            <button type="button" className="min-h-11 px-2 text-accent" onClick={book.cancelImport}>
-              Stop
-            </button>
-          </div>
-          <div className="mt-2 h-1 bg-line">
-            <div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-      )}
-
-      {(book.notice || problem) && (
-        <p className="no-print border-b border-line bg-caption px-4 py-2 text-sm" aria-live="polite">
-          {problem || book.notice}
-        </p>
-      )}
-
-      {handoff && (
-        <p className="no-print border-b border-line bg-surface px-4 py-2 text-sm">
-          Project file ready.{" "}
-          <a className="font-medium text-accent underline" href={handoff.url} download={handoff.name}>
-            Download {handoff.name}
-          </a>
-        </p>
-      )}
 
       {book.placingId && (
         <div className="no-print flex items-center justify-between gap-3 border-b border-line bg-ink px-4 py-2 text-sm text-page">
