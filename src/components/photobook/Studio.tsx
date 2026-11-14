@@ -8,7 +8,7 @@ import { PageSheet } from "@/components/photobook/PageSheet";
 import { PageStrip } from "@/components/photobook/PageStrip";
 import { emptyAdjust } from "@/lib/photobook/adjust";
 import { isoToStamp, stampToIso } from "@/lib/photobook/date";
-import { newBookHref, getBlob } from "@/lib/photobook/db";
+import { getBlob, listBlobIds, newBookHref } from "@/lib/photobook/db";
 import { connectDrive, loadBookFromDrive, saveBookToDrive } from "@/lib/photobook/drive-client";
 import { deliverFile } from "@/lib/photobook/download";
 import { renderBookPdf } from "@/lib/photobook/pdf";
@@ -291,10 +291,10 @@ export function Studio() {
     if (driveBusy.current) return;
     driveBusy.current = true;
     try {
-      const remote = await loadBookFromDrive(drivePercent("Loading from Drive"));
+      const remote = await loadBookFromDrive(drivePercent("Loading from Drive"), new Set(await listBlobIds()));
       driveOn.current = true;
-      await book.loadProject(remote.book, remote.photos);
-      setProblem("Loaded from Drive");
+      await book.mergeDriveBook(remote.book, remote.photos, remote.catalog);
+      setProblem(remote.photos.length === 0 ? "Loaded the book" : `Loaded ${remote.photos.length} new photos`);
     } catch (error) {
       complain(error instanceof Error ? error.message : "Could not load from Drive.");
     } finally {

@@ -108,7 +108,7 @@ export async function saveSyncStamp(stamp: number): Promise<void> {
   await transactionDone(tx);
 }
 
-export async function updateThumbMeta(id: string, patch: { takenAt?: number | null; seq?: number }): Promise<void> {
+export async function updateThumbMeta(id: string, patch: { takenAt?: number | null; seq?: number; name?: string }): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction("thumbs", "readwrite");
@@ -128,6 +128,12 @@ export async function putPhoto(thumb: ThumbRecord, blob: Blob): Promise<void> {
   tx.objectStore("thumbs").put(thumb);
   tx.objectStore("blobs").put({ id: thumb.id, blob } satisfies BlobRecord);
   await transactionDone(tx);
+}
+
+export async function listBlobIds(): Promise<string[]> {
+  const db = await openDb();
+  const keys = await requestToPromise(db.transaction("blobs", "readonly").objectStore("blobs").getAllKeys());
+  return keys.map((key) => String(key));
 }
 
 export async function getBlob(id: string): Promise<Blob | null> {

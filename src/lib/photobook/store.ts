@@ -104,6 +104,11 @@ type BookState = {
   clearPages: () => void;
   deleteAllPhotos: () => Promise<void>;
   loadProject: (book: Book, incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number }[]) => Promise<void>;
+  mergeDriveBook: (
+    book: Book,
+    incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number }[],
+    catalog: { id: string; name: string; takenAt?: number | null; seq?: number }[],
+  ) => Promise<void>;
   ensureFull: (id: string) => Promise<void>;
   ensureAllFull: () => Promise<void>;
   setPreparingPrint: (preparingPrint: boolean) => void;
@@ -1195,6 +1200,92 @@ export const useBook = create<BookState>((set, get) => {
     } catch (error) {
       set({ importing: null });
       flash(error instanceof Error ? error.message : "Could not open that project.");
+    }
+  },
+  mergeDriveBook: async (book, incoming, catalog) => {
+    const freshIds = new Set(incoming.map((item) => item.id));
+    const wanted = new Set(catalog.map((item) => item.id));
+    set({ importing: incoming.length ? { done: 0, total: incoming.length } : null, notice: null });
+    try {
+      const byId = new Map(get().photos.map((photo) => [photo.id, photo]));
+      for (const photo of get().photos) {
+        if (wanted.has(photo.id) && !freshIds.has(photo.id)) continue;
+        URL.revokeObjectURL(photo.thumbUrl);
+        if (!wanted.has(photo.id)) await deletePhotoRecord(photo.id);
+      }
+      const next = new Map<string, Photo>();
+      for (const item of catalog) {
+        if (freshIds.has(item.id)) continue;
+        const existing = byId.get(item.id);
+        const takenAt = typeof item.takenAt === "number" ? item.takenAt : (existing?.takenAt ?? null);
+        const seq = typeof item.seq === "number" ? item.seq : (existing?.seq ?? 0);
+        const name = item.name || existing?.name || "Photo";
+        if (existing) {
+          if (existing.takenAt !== takenAt || existing.seq !== seq || existing.name !== name) {
+            await updateThumbMeta(item.id, { takenAt, seq, name });
+          }
+          next.set(item.id, { ...existing, name, takenAt, seq });
+          continue;
+        }
+        const blob = await getBlob(item.id);
+        if (!blob) continue;
+        const decoded = await decodeImage(blob);
+        await putPhoto(
+          { id: item.id, name, w: decoded.w, h: decoded.h, thumb: decoded.thumb, takenAt, seq },
+          decoded.blob,
+        );
+        next.set(item.id, {
+          id: item.id,
+          name,
+          w: decoded.w,
+          h: decoded.h,
+          thumbUrl: URL.createObjectURL(decoded.thumb),
+          takenAt,
+          seq,
+        });
+      }
+      for (let index = 0; index < incoming.length; index += 1) {
+        const item = incoming[index];
+        const decoded = await decodeImage(item.blob);
+        const takenAt = typeof item.takenAt === "number" ? item.takenAt : null;
+        const seq = typeof item.seq === "number" ? item.seq : index + 1;
+        const name = item.name || "Photo";
+        await putPhoto(
+          { id: item.id, name, w: decoded.w, h: decoded.h, thumb: decoded.thumb, takenAt, seq },
+          decoded.blob,
+        );
+        next.set(item.id, {
+          id: item.id,
+          name,
+          w: decoded.w,
+          h: decoded.h,
+          thumbUrl: URL.createObjectURL(decoded.thumb),
+          takenAt,
+          seq,
+        });
+        set({ importing: { done: index + 1, total: incoming.length } });
+      }
+      const photos = catalog.flatMap((item) => {
+        const photo = next.get(item.id);
+        return photo ? [photo] : [];
+      });
+      const clean = sanitizeBook(book);
+      nextSeq = photos.reduce((max, photo) => Math.max(max, photo.seq), 0) + 1;
+      const active = clean.pages.some((page) => page.id === get().activePageId) ? get().activePageId : (clean.pages[0]?.id ?? null);
+      const fullUrls = { ...get().fullUrls };
+      for (const id of Object.keys(fullUrls)) {
+        if (!wanted.has(id) || freshIds.has(id)) {
+          URL.revokeObjectURL(fullUrls[id]);
+          delete fullUrls[id];
+        }
+      }
+      set({ ...clean, photos, fullUrls, placingId: null, activePageId: active, importing: null });
+      dirty = true;
+      await saveBook(clean);
+      dirty = false;
+    } catch (error) {
+      set({ importing: null });
+      throw error;
     }
   },
   ensureFull: async (id) => {

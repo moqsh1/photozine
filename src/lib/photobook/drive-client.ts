@@ -67,20 +67,22 @@ export async function saveBookToDrive(
   readBlob: (id: string) => Promise<Blob | null>,
   onProgress?: DriveProgress,
 ) {
-  const total = Math.max(1, photos.length + 1);
-  onProgress?.(0, total);
   const { accessToken, folderId } = await getDriveAccess();
   const files = await listChildren(accessToken, folderId);
   const byName = new Map(files.map((file) => [file.name, file.id]));
   const listed: BookFile["photos"] = [];
-  let done = 0;
+  const pending: Photo[] = [];
   for (const photo of photos) {
     const filename = `${photo.id}.jpg`;
     listed.push({ id: photo.id, name: photo.name, file: filename, takenAt: photo.takenAt, seq: photo.seq });
-    if (!byName.has(filename)) {
-      const blob = await readBlob(photo.id);
-      if (blob) await upload(accessToken, folderId, filename, blob);
-    }
+    if (!byName.has(filename)) pending.push(photo);
+  }
+  const total = pending.length + 1;
+  onProgress?.(0, total);
+  let done = 0;
+  for (const photo of pending) {
+    const blob = await readBlob(photo.id);
+    if (blob) await upload(accessToken, folderId, `${photo.id}.jpg`, blob);
     done += 1;
     onProgress?.(done, total);
   }
@@ -96,7 +98,7 @@ export async function saveBookToDrive(
   return payload.updatedAt;
 }
 
-export async function loadBookFromDrive(onProgress?: DriveProgress) {
+export async function loadBookFromDrive(onProgress?: DriveProgress, present?: Set<string>) {
   onProgress?.(0, 1);
   const { accessToken, folderId } = await getDriveAccess();
   const files = await listChildren(accessToken, folderId);
@@ -106,11 +108,12 @@ export async function loadBookFromDrive(onProgress?: DriveProgress) {
   const parsed = (await raw.json()) as BookFile;
   if (!parsed || parsed.version !== 1 || !parsed.book) throw new Error("The Drive book file is damaged.");
   const items = parsed.photos ?? [];
-  const total = Math.max(1, items.length + 1);
-  onProgress?.(1, total);
+  const missing = items.filter((item) => !present?.has(item.id));
+  const total = Math.max(1, missing.length);
+  if (missing.length === 0) onProgress?.(1, 1);
   const photos = [];
-  let done = 1;
-  for (const item of items) {
+  let done = 0;
+  for (const item of missing) {
     const file = files.find((entry) => entry.name === item.file || entry.name === `${item.id}.jpg`);
     if (file) {
       const media = await driveFetch(accessToken, `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
@@ -125,6 +128,5 @@ export async function loadBookFromDrive(onProgress?: DriveProgress) {
     done += 1;
     onProgress?.(done, total);
   }
-  onProgress?.(total, total);
-  return { updatedAt: parsed.updatedAt ?? 0, book: parsed.book, photos };
+  return { updatedAt: parsed.updatedAt ?? 0, book: parsed.book, photos, catalog: items };
 }
