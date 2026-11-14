@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { mergeAdjust, readAdjust, type Adjust } from "@/lib/photobook/adjust";
 import { captionForDate, dateFromName, formatHindiDate, readTakenAt } from "@/lib/photobook/date";
-import { decodeImage, prettyName } from "@/lib/photobook/decode";
+import { decodeImage, measureImage, prettyName } from "@/lib/photobook/decode";
 import { pullNewerBook, queueFolderSync } from "@/lib/photobook/sync";
 import {
   deleteAllPhotoRecords,
@@ -10,6 +10,7 @@ import {
   loadBook,
   loadThumbs,
   putPhoto,
+  putThumb,
   saveBook,
   updateThumbMeta,
 } from "@/lib/photobook/db";
@@ -104,10 +105,10 @@ type BookState = {
   deletePhoto: (id: string) => Promise<void>;
   clearPages: () => void;
   deleteAllPhotos: () => Promise<void>;
-  loadProject: (book: Book, incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number }[]) => Promise<void>;
+  loadProject: (book: Book, incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number; full?: boolean }[]) => Promise<void>;
   mergeDriveBook: (
     book: Book,
-    incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number }[],
+    incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number; full?: boolean }[],
     catalog: { id: string; name: string; takenAt?: number | null; seq?: number }[],
   ) => Promise<void>;
   ensureFull: (id: string) => Promise<void>;
@@ -1283,23 +1284,37 @@ export const useBook = create<BookState>((set, get) => {
       }
       for (let index = 0; index < incoming.length; index += 1) {
         const item = incoming[index];
-        const decoded = await decodeImage(item.blob);
         const takenAt = typeof item.takenAt === "number" ? item.takenAt : null;
         const seq = typeof item.seq === "number" ? item.seq : index + 1;
         const name = item.name || "Photo";
-        await putPhoto(
-          { id: item.id, name, w: decoded.w, h: decoded.h, thumb: decoded.thumb, takenAt, seq },
-          decoded.blob,
-        );
-        next.set(item.id, {
-          id: item.id,
-          name,
-          w: decoded.w,
-          h: decoded.h,
-          thumbUrl: URL.createObjectURL(decoded.thumb),
-          takenAt,
-          seq,
-        });
+        if (item.full === false) {
+          const size = await measureImage(item.blob);
+          await putThumb({ id: item.id, name, w: size.w, h: size.h, thumb: item.blob, takenAt, seq });
+          next.set(item.id, {
+            id: item.id,
+            name,
+            w: size.w,
+            h: size.h,
+            thumbUrl: URL.createObjectURL(item.blob),
+            takenAt,
+            seq,
+          });
+        } else {
+          const decoded = await decodeImage(item.blob);
+          await putPhoto(
+            { id: item.id, name, w: decoded.w, h: decoded.h, thumb: decoded.thumb, takenAt, seq },
+            decoded.blob,
+          );
+          next.set(item.id, {
+            id: item.id,
+            name,
+            w: decoded.w,
+            h: decoded.h,
+            thumbUrl: URL.createObjectURL(decoded.thumb),
+            takenAt,
+            seq,
+          });
+        }
         set({ importing: { done: index + 1, total: incoming.length } });
       }
       const photos = catalog.flatMap((item) => {

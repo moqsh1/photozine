@@ -8,8 +8,8 @@ import { PageSheet } from "@/components/photobook/PageSheet";
 import { PageStrip } from "@/components/photobook/PageStrip";
 import { emptyAdjust } from "@/lib/photobook/adjust";
 import { isoToStamp, stampToIso } from "@/lib/photobook/date";
-import { getBlob, listBlobIds, newBookHref } from "@/lib/photobook/db";
-import { connectDrive, loadBookFromDrive, saveBookToDrive } from "@/lib/photobook/drive-client";
+import { getBlob, listBlobIds, listThumbIds, newBookHref } from "@/lib/photobook/db";
+import { ensureDriveOriginals, connectDrive, loadBookFromDrive, saveBookToDrive } from "@/lib/photobook/drive-client";
 import { deliverFile } from "@/lib/photobook/download";
 import { renderBookPdf } from "@/lib/photobook/pdf";
 import { buildProjectFile, pdfFilename, projectFilename, readProjectFile } from "@/lib/photobook/project";
@@ -232,6 +232,10 @@ export function Studio() {
   async function onSaveProject() {
     book.setPreparingPrint(true);
     try {
+      await ensureDriveOriginals(
+        book.photos.map((photo) => photo.id),
+        drivePercent("Full photos"),
+      );
       const blob = await buildProjectFile(snapshot(), book.photos);
       const name = projectFilename(book.title);
       const url = URL.createObjectURL(blob);
@@ -314,7 +318,8 @@ export function Studio() {
     if (driveBusy.current) return;
     driveBusy.current = true;
     try {
-      const remote = await loadBookFromDrive(drivePercent("Loading from Drive"), new Set(await listBlobIds()));
+      const present = new Set([...(await listThumbIds()), ...(await listBlobIds())]);
+      const remote = await loadBookFromDrive(drivePercent("Loading previews"), present);
       driveOn.current = true;
       await book.mergeDriveBook(remote.book, remote.photos, remote.catalog);
       markDrive("loaded");
@@ -343,8 +348,17 @@ export function Studio() {
       return;
     }
     book.setPreparingPrint(true);
-    setExportNote(`Drawing page 1 of ${pages.length}`);
+    const ids: string[] = [];
+    for (const page of pages) {
+      for (const slot of page.slots) {
+        if (slot.photoId && !ids.includes(slot.photoId)) ids.push(slot.photoId);
+      }
+    }
+    setExportNote(ids.length ? `Full photos 0 of ${ids.length}` : `Drawing page 1 of ${pages.length}`);
     try {
+      await ensureDriveOriginals(ids, (done, total) => {
+        setExportNote(done >= total ? `Drawing page 1 of ${pages.length}` : `Full photos ${done} of ${total}`);
+      });
       const blob = await renderBookPdf(snapshot(), pages, book.photos, (done, total) => {
         setExportNote(done >= total ? "PDF ready." : `Drawing page ${done + 1} of ${total}`);
       });

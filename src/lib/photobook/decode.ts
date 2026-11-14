@@ -56,6 +56,14 @@ async function loadBitmap(file: Blob): Promise<ImageBitmap> {
   }
 }
 
+export async function measureImage(file: Blob): Promise<{ w: number; h: number }> {
+  const bitmap = await loadBitmap(file);
+  try {
+    return { w: bitmap.width, h: bitmap.height };
+  } finally {
+    bitmap.close();
+  }
+}
 export function prettyName(filename: string) {
   const stripped = filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
   return stripped || "Photo";

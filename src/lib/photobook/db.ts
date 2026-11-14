@@ -122,6 +122,34 @@ export async function updateThumbMeta(id: string, patch: { takenAt?: number | nu
   });
 }
 
+export async function putThumb(thumb: ThumbRecord): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction("thumbs", "readwrite");
+  tx.objectStore("thumbs").put(thumb);
+  await transactionDone(tx);
+}
+
+export async function putBlob(id: string, blob: Blob): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction("blobs", "readwrite");
+  tx.objectStore("blobs").put({ id, blob } satisfies BlobRecord);
+  await transactionDone(tx);
+}
+
+export async function getThumbBlob(id: string): Promise<Blob | null> {
+  const db = await openDb();
+  const record = await requestToPromise(
+    db.transaction("thumbs", "readonly").objectStore("thumbs").get(id) as IDBRequest<ThumbRecord | undefined>,
+  );
+  return record?.thumb ?? null;
+}
+
+export async function listThumbIds(): Promise<string[]> {
+  const db = await openDb();
+  const keys = await requestToPromise(db.transaction("thumbs", "readonly").objectStore("thumbs").getAllKeys());
+  return keys.map((key) => String(key));
+}
+
 export async function putPhoto(thumb: ThumbRecord, blob: Blob): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(["thumbs", "blobs"], "readwrite");
