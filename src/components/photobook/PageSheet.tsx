@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
-import { containZoom, imageBox } from "@/lib/photobook/crop";
-import { formatHindiDate, isHindiDate } from "@/lib/photobook/date";
-import { cellRects, fitLandscapeOverPortraits, landscapeOverPortraitAspects, rectToPercent } from "@/lib/photobook/geometry";
-import { LAYOUT_BY_ID } from "@/lib/photobook/layouts";
+import { adjustFilter, vignetteStrength } from "@/lib/photobook/adjust";
+import { imageBox, orientedSize, placedImageStyle } from "@/lib/photobook/crop";
+import { isHindiDate, visibleCaption } from "@/lib/photobook/date";
+import { pageFrameRects, rectToPercent } from "@/lib/photobook/geometry";
 import { PAGE_INCHES, type Orientation, type Page, type Photo, type Slot } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -21,8 +21,10 @@ type PageSheetProps = {
   pageNumber?: number;
   interactive?: boolean;
   selectedSlot?: number | null;
+  pageSelected?: boolean;
   placing?: boolean;
   onSelectSlot?: (index: number) => void;
+  onDeselect?: () => void;
   onCommitPan?: (index: number, panX: number, panY: number) => void;
   onDropPhoto?: (index: number, photoId: string) => void;
   onSwap?: (index: number, fromPageId: string, fromIndex: number) => void;
@@ -40,26 +42,42 @@ export function PageSheet({
   pageNumber,
   interactive = false,
   selectedSlot = null,
+  pageSelected = false,
   placing = false,
   onSelectSlot,
+  onDeselect,
   onCommitPan,
   onDropPhoto,
   onSwap,
   onImport,
 }: PageSheetProps) {
   const inches = PAGE_INCHES[orientation];
-  const layout = LAYOUT_BY_ID[page.layout];
-  const trio =
-    page.layout === "three-banner"
-      ? landscapeOverPortraitAspects(page.slots.map((slot) => (slot.photoId ? photoById.get(slot.photoId) : undefined)))
-      : null;
-  const rects = trio
-    ? fitLandscapeOverPortraits(inches.w, inches.h, marginIn, gapIn, captionIn, trio)
-    : cellRects(layout.areas, inches.w, inches.h, marginIn, gapIn);
+  const [hot, setHot] = useState<number | null>(null);
+  const rects = pageFrameRects(
+    page.layout,
+    page.split,
+    page.splitL,
+    page.splitR,
+    page.splitW,
+    page.slots.map((slot) => (slot.photoId ? photoById.get(slot.photoId) : undefined)),
+    inches.w,
+    inches.h,
+    marginIn,
+    gapIn,
+    captionIn,
+  );
 
   return (
     <div
-      className="page-sheet relative h-full w-full bg-page"
+      className={cn("page-sheet relative h-full w-full bg-page", interactive && pageSelected && "ring-4 ring-inset ring-ink")}
+      onClick={
+        interactive
+          ? (event) => {
+              if ((event.target as HTMLElement).closest("[data-slot]")) return;
+              onDeselect?.();
+            }
+          : undefined
+      }
       onDragOver={
         interactive
           ? (event) => {
@@ -106,7 +124,8 @@ export function PageSheet({
             interactive={interactive}
             selected={selectedSlot === index}
             placing={placing}
-            uncropped={Boolean(trio)}
+            hot={hot === index}
+            onHot={setHot}
             onSelectSlot={onSelectSlot}
             onCommitPan={onCommitPan}
             onDropPhoto={onDropPhoto}
@@ -137,7 +156,8 @@ function Frame({
   interactive,
   selected,
   placing,
-  uncropped = false,
+  hot = false,
+  onHot,
   onSelectSlot,
   onCommitPan,
   onDropPhoto,
@@ -156,7 +176,8 @@ function Frame({
   interactive: boolean;
   selected: boolean;
   placing: boolean;
-  uncropped?: boolean;
+  hot?: boolean;
+  onHot?: (index: number | null) => void;
   onSelectSlot?: (index: number) => void;
   onCommitPan?: (index: number, panX: number, panY: number) => void;
   onDropPhoto?: (index: number, photoId: string) => void;
@@ -164,19 +185,19 @@ function Frame({
   onImport?: (index: number) => void;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; panX: number; panY: number; mode: "pending" | "pan" | "swap"; to: number | null } | null>(null);
   const liveRef = useRef<{ panX: number; panY: number } | null>(null);
   const [live, setLive] = useState<{ panX: number; panY: number } | null>(null);
   const [over, setOver] = useState(false);
-  const formatted = slot.takenAt != null ? formatHindiDate(slot.takenAt) : "";
-  const dateInCaption = Boolean(formatted) && slot.caption.includes(formatted);
-  const dateLabel = formatted && !dateInCaption ? formatted : "";
+  const shownCaption = visibleCaption(slot.caption, slot.takenAt, Boolean(slot.yearOnly));
   const captionFrac = Math.min(0.42, captionIn / rect.h);
   const imageH = rect.h * (1 - captionFrac);
   const frameAspect = rect.w / Math.max(0.05, imageH);
-  const pan = uncropped ? { panX: 0, panY: 0 } : (live ?? { panX: slot.panX, panY: slot.panY });
-  const zoom = uncropped && photo ? containZoom(frameAspect, photo) : slot.zoom;
-  const box = photo ? imageBox(frameAspect, photo, zoom, pan.panX, pan.panY) : null;
+  const pan = live ?? { panX: slot.panX, panY: slot.panY };
+  const turn = slot.turn ?? 0;
+  const oriented = photo ? orientedSize(photo, turn) : null;
+  const zoom = slot.zoom;
+  const box = oriented ? imageBox(frameAspect, oriented, zoom, pan.panX, pan.panY) : null;
   const shownSrc = src || photo?.thumbUrl;
   const style = rectToPercent(rect, pageW, pageH);
 
@@ -186,16 +207,32 @@ function Frame({
     liveRef.current = null;
     setLive(null);
     drag.current = null;
+    onHot?.(null);
+  }
+
+  function frameUnder(x: number, y: number): number | null {
+    const slotEl = frameRef.current?.parentElement;
+    const previous = slotEl?.style.pointerEvents ?? "";
+    if (slotEl) slotEl.style.pointerEvents = "none";
+    const hit = document.elementFromPoint(x, y)?.closest("[data-slot]");
+    if (slotEl) slotEl.style.pointerEvents = previous;
+    if (!hit) return null;
+    if (hit.getAttribute("data-page") !== pageId) return null;
+    const slotIndex = Number(hit.getAttribute("data-slot"));
+    if (!Number.isInteger(slotIndex) || slotIndex === index) return null;
+    return slotIndex;
   }
 
   return (
     <div
       className={cn(
         "absolute overflow-hidden bg-well",
-        interactive && selected && "z-10 ring-2 ring-accent ring-inset",
-        interactive && over && "ring-2 ring-accent ring-inset",
+        interactive && selected && "z-20",
+        interactive && (over || hot) && "z-10 ring-2 ring-accent ring-inset",
       )}
       style={style}
+      data-page={pageId}
+      data-slot={index}
       onDragOver={
         interactive
           ? (event) => {
@@ -230,18 +267,21 @@ function Frame({
     >
       <div
         ref={frameRef}
-        className={cn("absolute inset-x-0 top-0 overflow-hidden", interactive && photo && !uncropped && "reframe")}
+        className={cn(
+          "absolute inset-x-0 top-0 overflow-hidden touch-none",
+          interactive && photo && "reframe",
+        )}
         style={{ bottom: `${captionFrac * 100}%` }}
         onPointerDown={
           interactive
             ? (event) => {
                 if (!photo || event.button !== 0) return;
                 onSelectSlot?.(index);
-                if (uncropped || placing) return;
+                if (placing) return;
                 const frame = frameRef.current;
-                if (!frame || !box) return;
+                if (!frame) return;
                 frame.setPointerCapture(event.pointerId);
-                drag.current = { x: event.clientX, y: event.clientY, panX: slot.panX, panY: slot.panY };
+                drag.current = { x: event.clientX, y: event.clientY, panX: slot.panX, panY: slot.panY, mode: "pending", to: null };
               }
             : undefined
         }
@@ -250,10 +290,28 @@ function Frame({
             ? (event) => {
                 const start = drag.current;
                 const frame = frameRef.current;
-                if (!start || !frame || !box || !photo) return;
+                if (!start || !frame || !photo) return;
                 const dx = event.clientX - start.x;
                 const dy = event.clientY - start.y;
-                if (Math.abs(dx) + Math.abs(dy) < 3 && !liveRef.current) return;
+                if (start.mode === "pending" && Math.abs(dx) + Math.abs(dy) < 8) return;
+                const target = frameUnder(event.clientX, event.clientY);
+                if (target != null) {
+                  start.mode = "swap";
+                  start.to = target;
+                  onHot?.(target);
+                  if (liveRef.current) {
+                    liveRef.current = null;
+                    setLive(null);
+                  }
+                  return;
+                }
+                if (start.mode === "swap") {
+                  start.mode = "pending";
+                  start.to = null;
+                  onHot?.(null);
+                }
+                if (!box) return;
+                start.mode = "pan";
                 const slackPxX = (box.slackX / 100) * frame.clientWidth;
                 const slackPxY = (box.slackY / 100) * frame.clientHeight;
                 const followX = box.width < 100 ? 1 : -1;
@@ -267,7 +325,22 @@ function Frame({
               }
             : undefined
         }
-        onPointerUp={interactive ? () => commit() : undefined}
+        onPointerUp={
+          interactive
+            ? () => {
+                const start = drag.current;
+                if (start?.mode === "swap" && start.to != null) {
+                  onSwap?.(start.to, pageId, index);
+                  liveRef.current = null;
+                  setLive(null);
+                  drag.current = null;
+                  onHot?.(null);
+                  return;
+                }
+                commit();
+              }
+            : undefined
+        }
         onPointerCancel={interactive ? () => commit() : undefined}
         onDoubleClick={
           interactive && photo
@@ -280,18 +353,23 @@ function Frame({
         }
       >
         {photo && box && shownSrc ? (
-          <img
-            src={shownSrc}
-            alt={slot.caption || photo.name}
-            draggable={false}
-            className="absolute max-w-none select-none"
-            style={{
-              left: `${box.left}%`,
-              top: `${box.top}%`,
-              width: `${box.width}%`,
-              height: `${box.height}%`,
-            }}
-          />
+          <>
+            <img
+              src={shownSrc}
+              alt={slot.caption || photo.name}
+              draggable={false}
+              className="pointer-events-none absolute max-w-none select-none"
+              style={{ ...placedImageStyle(box, turn, frameAspect), filter: adjustFilter(slot.adjust) }}
+            />
+            {vignetteStrength(slot.adjust) > 0 && (
+              <span
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background: `radial-gradient(circle, transparent 42%, rgba(0,0,0,${(vignetteStrength(slot.adjust) * 0.72).toFixed(3)}) 100%)`,
+                }}
+              />
+            )}
+          </>
         ) : (
           interactive && (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-2 text-center text-muted">
@@ -314,7 +392,7 @@ function Frame({
         )}
         {interactive && photo && (
           <div
-            className="absolute top-1 left-1 z-10 flex size-8 cursor-grab items-center justify-center rounded-sm bg-page/90 text-ink active:cursor-grabbing"
+            className="absolute top-1.5 left-1.5 z-30 flex size-9 cursor-grab items-center justify-center rounded-sm bg-page/95 text-ink shadow-sm ring-1 ring-line active:cursor-grabbing"
             draggable
             aria-label="Drag to swap with another frame"
             onPointerDown={(event) => event.stopPropagation()}
@@ -335,14 +413,21 @@ function Frame({
             className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-center"
             onClick={() => onSelectSlot?.(index)}
           >
-            <CaptionLines caption={slot.caption} dateLabel={dateLabel} placeholder={dateLabel ? undefined : "Add a caption"} />
+            <CaptionLines caption={shownCaption} dateLabel="" placeholder={shownCaption ? undefined : "Add a caption"} />
           </button>
         ) : (
           <div className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-center">
-            <CaptionLines caption={slot.caption} dateLabel={dateLabel} />
+            <CaptionLines caption={shownCaption} dateLabel="" />
           </div>
         )}
       </div>
+      {interactive && selected && (
+        <span className="frame-selected pointer-events-none absolute inset-0 z-40">
+          <span className="absolute top-1.5 right-1.5 bg-accent px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-page uppercase">
+            Selected
+          </span>
+        </span>
+      )}
     </div>
   );
 }

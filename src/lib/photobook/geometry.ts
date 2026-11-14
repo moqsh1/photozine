@@ -1,4 +1,6 @@
 import type { Area } from "@/lib/photobook/layouts";
+import { areasFor } from "@/lib/photobook/layouts";
+import type { LayoutId } from "@/lib/photobook/types";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -86,15 +88,15 @@ export function fitLandscapeOverPortraits(
   const innerW = contentW * scale;
   const topImg = innerW / safe[0];
   const botW = Math.max(0.2, (innerW - gap) / 2);
-  const botImg = [botW / safe[1], botW / safe[2]];
-  const total = topImg + caption + gap + Math.max(botImg[0], botImg[1]) + caption;
+  const botImg = botW / Math.max(safe[1], safe[2]);
+  const total = topImg + caption + gap + botImg + caption;
   const x0 = margin + (contentW - innerW) / 2;
   const y0 = margin + Math.max(0, (contentH - total) / 2);
   const rowY = y0 + topImg + caption + gap;
   return [
     { x: x0, y: y0, w: innerW, h: topImg + caption },
-    { x: x0, y: rowY, w: botW, h: botImg[0] + caption },
-    { x: x0 + botW + gap, y: rowY, w: botW, h: botImg[1] + caption },
+    { x: x0, y: rowY, w: botW, h: botImg + caption },
+    { x: x0 + botW + gap, y: rowY, w: botW, h: botImg + caption },
   ];
 }
 
@@ -102,6 +104,31 @@ function trioHeight(contentW: number, gap: number, caption: number, aspects: [nu
   const innerW = contentW * scale;
   const topImg = innerW / aspects[0];
   const botW = Math.max(0.2, (innerW - gap) / 2);
-  const botImg = Math.max(botW / aspects[1], botW / aspects[2]);
+  const botImg = botW / Math.max(aspects[1], aspects[2]);
   return topImg + caption + gap + botImg + caption;
+}
+
+export function pageFrameRects(
+  layout: LayoutId,
+  split: number | null | undefined,
+  splitL: number | null | undefined,
+  splitR: number | null | undefined,
+  splitW: number | null | undefined,
+  photos: Array<{ w: number; h: number } | undefined>,
+  pageW: number,
+  pageH: number,
+  margin: number,
+  gap: number,
+  captionIn: number,
+): Rect[] {
+  const custom =
+    (typeof split === "number" && Number.isFinite(split)) ||
+    (typeof splitL === "number" && Number.isFinite(splitL)) ||
+    (typeof splitR === "number" && Number.isFinite(splitR)) ||
+    (typeof splitW === "number" && Number.isFinite(splitW));
+  if (layout === "three-banner" && !custom) {
+    const aspects = landscapeOverPortraitAspects(photos);
+    if (aspects) return fitLandscapeOverPortraits(pageW, pageH, margin, gap, captionIn, aspects);
+  }
+  return cellRects(areasFor(layout, split, splitL, splitR, splitW), pageW, pageH, margin, gap);
 }

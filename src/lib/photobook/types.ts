@@ -1,3 +1,5 @@
+import type { Adjust } from "@/lib/photobook/adjust";
+
 export type Orientation = "landscape" | "portrait";
 export type Density = 1 | 2 | 3 | 4;
 export type LayoutId =
@@ -17,12 +19,19 @@ export type Slot = {
   zoom: number;
   panX: number;
   panY: number;
+  turn: 0 | 1 | 2 | 3;
+  yearOnly?: boolean;
+  adjust?: Adjust;
 };
 
 export type Page = {
   id: string;
   layout: LayoutId;
   slots: Slot[];
+  split?: number | null;
+  splitL?: number | null;
+  splitR?: number | null;
+  splitW?: number | null;
 };
 
 export type Book = {
@@ -60,7 +69,7 @@ export const LIMITS = {
 } as const;
 
 export function emptySlot(): Slot {
-  return { photoId: null, caption: "", takenAt: null, zoom: 1, panX: 0, panY: 0 };
+  return { photoId: null, caption: "", takenAt: null, zoom: 1, panX: 0, panY: 0, turn: 0 };
 }
 
 export function clamp(n: number, min: number, max: number) {

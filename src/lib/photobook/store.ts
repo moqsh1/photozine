@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { mergeAdjust, readAdjust, type Adjust } from "@/lib/photobook/adjust";
+import { captionForDate, dateFromName, formatHindiDate, readTakenAt } from "@/lib/photobook/date";
 import { decodeImage, prettyName } from "@/lib/photobook/decode";
-import { captionForDate, dateFromName, readTakenAt } from "@/lib/photobook/date";
+import { pullNewerBook, queueFolderSync } from "@/lib/photobook/sync";
 import {
   deleteAllPhotoRecords,
   deletePhotoRecord,
@@ -63,6 +65,7 @@ type BookState = {
   setFilter: (libraryFilter: LibraryFilter) => void;
   selectPage: (id: string) => void;
   selectSlot: (index: number) => void;
+  clearSlotSelection: () => void;
   focusPhoto: (id: string) => void;
   cancelPlacing: () => void;
   importFiles: (files: File[], captions?: Record<string, string>, into?: { pageId: string; index: number }) => Promise<void>;
@@ -74,7 +77,9 @@ type BookState = {
   movePage: (dir: -1 | 1) => void;
   stepPage: (dir: -1 | 1) => void;
   movePageTo: (fromId: string, toId: string) => void;
+  placePageAt: (pageNumber: number) => void;
   setPageLayout: (layout: LayoutId) => void;
+  setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
   clearSlot: (pageId: string, index: number) => void;
   copySlot: () => void;
@@ -85,8 +90,16 @@ type BookState = {
   swapSlots: (fromPageId: string, fromIndex: number, toPageId: string, toIndex: number) => void;
   reorderPhotos: (fromId: string, toId: string) => void;
   setSlotCaption: (pageId: string, index: number, caption: string) => void;
+  clearPageCaptions: () => void;
+  clearCaptionsOnPages: (ids: string[]) => void;
+  setYearOnly: (pageId: string, index: number, yearOnly: boolean) => void;
+  captionPhotos: (ids: string[], caption: string) => void;
+  datePhotos: (ids: string[], takenAt: number | null) => void;
   setSlotDate: (pageId: string, index: number, takenAt: number | null) => void;
   setSlotCrop: (pageId: string, index: number, crop: Partial<Pick<Slot, "zoom" | "panX" | "panY">>) => void;
+  setSlotAdjust: (pageId: string, index: number, patch: Partial<Adjust>) => void;
+  applyAdjustToPhotos: (ids: string[], adjust: Adjust | undefined) => void;
+  rotateSlot: (pageId: string, index: number) => void;
   deletePhoto: (id: string) => Promise<void>;
   clearPages: () => void;
   deleteAllPhotos: () => Promise<void>;
@@ -163,7 +176,7 @@ function persistLater() {
   window.clearTimeout(saveTimer);
   const book = snapshot(useBook.getState());
   saveTimer = window.setTimeout(() => {
-    void saveBook(book);
+    void saveBook(book).then(() => queueFolderSync(book, useBook.getState().photos));
   }, 220);
 }
 
@@ -226,6 +239,42 @@ function flash(notice: string) {
   window.setTimeout(() => {
     if (useBook.getState().notice === notice) useBook.setState({ notice: null });
   }, 4600);
+}
+
+function sortIdsByDate(ids: string[], takenAt: Map<string, number | null>): string[] {
+  return ids
+    .map((id, index) => ({ id, index, at: takenAt.get(id) ?? null }))
+    .sort((a, b) => {
+      if (a.at == null && b.at == null) return a.index - b.index;
+      if (a.at == null) return 1;
+      if (b.at == null) return -1;
+      return a.at - b.at || a.index - b.index;
+    })
+    .map((item) => item.id);
+}
+
+function pagesInDateOrder(
+  existing: Page[],
+  ids: string[],
+  pageIsLandscape: boolean,
+  isLandscape: (id: string) => boolean,
+): Page[] {
+  const byPhoto = new Map<string, Slot>();
+  for (const page of existing) {
+    for (const slot of page.slots) {
+      if (slot.photoId) byPhoto.set(slot.photoId, slot);
+    }
+  }
+  return packGroups(ids, isLandscape, pageIsLandscape).map((group) => {
+    const page = makePage(group.layout);
+    page.slots = page.slots.map((slot, index) => {
+      const id = group.ids[index];
+      if (!id) return slot;
+      const source = byPhoto.get(id);
+      return source ? { ...source } : { ...slot, photoId: id };
+    });
+    return page;
+  });
 }
 
 function placeIds(
@@ -398,6 +447,12 @@ export const useBook = create<BookState>((set, get) => {
     }
     await get().backfillDates();
     armHistory();
+    try {
+      const remote = await pullNewerBook();
+      if (remote) await get().loadProject(remote.book, remote.photos);
+    } catch {
+      // The folder can be read the next time the user opens Sync.
+    }
   },
 
   backfillDates: async () => {
@@ -473,6 +528,10 @@ export const useBook = create<BookState>((set, get) => {
       set({ placingId: null });
     }
   },
+  clearSlotSelection: () => {
+    if (get().selectedSlot == null) return;
+    set({ selectedSlot: null });
+  },
   focusPhoto: (id) => set({ placingId: get().placingId === id ? null : id }),
   cancelPlacing: () => set({ placingId: null }),
   cancelImport: () => {
@@ -534,15 +593,18 @@ export const useBook = create<BookState>((set, get) => {
     if (fresh.length) {
       set((state) => ({ photos: state.photos.concat(fresh) }));
     }
+    const takenOf = new Map(get().photos.map((photo) => [photo.id, photo.takenAt]));
+    const ordered = sortIdsByDate(ids, takenOf);
     const target =
       into && get().pages.some((page) => page.id === into.pageId && page.slots[into.index]) ? into : null;
-    let pool = ids;
-    if (target && ids[0]) {
-      const takenAt = get().photos.find((photo) => photo.id === ids[0])?.takenAt ?? null;
+    let pages: Page[];
+    let replaceEmpty = false;
+    if (target && ordered[0]) {
+      const takenAt = takenOf.get(ordered[0]) ?? null;
       set({
         pages: patchSlot(get().pages, target.pageId, target.index, (slot) => ({
           ...slot,
-          photoId: ids[0],
+          photoId: ordered[0],
           takenAt,
           caption: captionForDate("", takenAt).slice(0, 140),
           zoom: 1,
@@ -552,11 +614,30 @@ export const useBook = create<BookState>((set, get) => {
         activePageId: target.pageId,
         selectedSlot: target.index,
       });
-      pool = ids.slice(1);
+      const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+      pages = placeIds(
+        get().pages,
+        ordered.slice(1),
+        false,
+        get().orientation === "landscape",
+        (id) => shape.get(id) === true,
+      );
+    } else {
+      const seen = new Set(ordered);
+      const placed: string[] = [];
+      for (const page of get().pages) {
+        for (const slot of page.slots) {
+          if (slot.photoId && !seen.has(slot.photoId)) {
+            seen.add(slot.photoId);
+            placed.push(slot.photoId);
+          }
+        }
+      }
+      const sequence = sortIdsByDate([...placed, ...ordered], takenOf);
+      const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+      replaceEmpty = bookIsEmpty(get().pages);
+      pages = pagesInDateOrder(get().pages, sequence, get().orientation === "landscape", (id) => shape.get(id) === true);
     }
-    const replaceEmpty = !target && bookIsEmpty(get().pages);
-    const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
-    const pages = placeIds(get().pages, pool, replaceEmpty, get().orientation === "landscape", (id) => shape.get(id) === true);
     const captioned = captions
       ? pages.map((page) => ({
           ...page,
@@ -580,7 +661,7 @@ export const useBook = create<BookState>((set, get) => {
     }));
     set({
       pages: dated,
-      activePageId: target ? target.pageId : replaceEmpty ? (dated[0]?.id ?? null) : (get().activePageId ?? dated[0]?.id ?? null),
+      activePageId: target ? target.pageId : (dated[0]?.id ?? null),
       importing: null,
       selectedSlot: target ? target.index : 0,
     });
@@ -683,6 +764,17 @@ export const useBook = create<BookState>((set, get) => {
     set({ pages, activePageId: fromId });
     persistLater();
   },
+  placePageAt: (pageNumber) => {
+    const pages = get().pages.slice();
+    const from = pages.findIndex((page) => page.id === get().activePageId);
+    if (from < 0 || !Number.isFinite(pageNumber)) return;
+    const wanted = Math.min(pages.length - 1, Math.max(0, Math.round(pageNumber) - 1));
+    if (wanted === from) return;
+    const [page] = pages.splice(from, 1);
+    pages.splice(wanted, 0, page);
+    set({ pages, activePageId: page.id });
+    persistLater();
+  },
   setPageLayout: (layout) => {
     const id = get().activePageId;
     if (!id) return;
@@ -719,7 +811,7 @@ export const useBook = create<BookState>((set, get) => {
         headSlots = Array.from({ length: nextCount }, (_, slotIndex) => carried[slotIndex] ?? emptySlot());
         rest = carried.slice(nextCount);
       }
-      const head: Page = { ...current[index], layout, slots: headSlots };
+      const head: Page = { ...current[index], layout, slots: headSlots, split: null, splitL: null, splitR: null, splitW: null };
       const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
       const groups = packGroups(
         rest.flatMap((slot) => (slot.photoId ? [slot.photoId] : [])),
@@ -742,6 +834,17 @@ export const useBook = create<BookState>((set, get) => {
     set({
       pages,
       selectedSlot: selected != null && page && selected < page.slots.length ? selected : 0,
+    });
+    persistLater();
+  },
+  setPageSplit: (split, part = "top") => {
+    const id = get().activePageId;
+    if (!id) return;
+    const key = part === "left" ? "splitL" : part === "right" ? "splitR" : part === "width" ? "splitW" : "split";
+    const band = key === "split" || key === "splitW";
+    const next = split == null || !Number.isFinite(split) ? null : clamp(split, band ? 0.18 : 0.2, band ? 0.82 : 1);
+    set({
+      pages: get().pages.map((page) => (page.id === id ? { ...page, [key]: next } : page)),
     });
     persistLater();
   },
@@ -856,7 +959,91 @@ export const useBook = create<BookState>((set, get) => {
     });
     persistLater();
   },
+  clearPageCaptions: () => {
+    const id = get().activePageId;
+    if (!id) return;
+    set({
+      pages: get().pages.map((page) =>
+        page.id === id ? { ...page, slots: page.slots.map((slot) => ({ ...slot, caption: "" })) } : page,
+      ),
+    });
+    persistLater();
+  },
+  clearCaptionsOnPages: (ids) => {
+    const wanted = new Set(ids);
+    if (wanted.size === 0) return;
+    set({
+      pages: get().pages.map((page) =>
+        wanted.has(page.id) ? { ...page, slots: page.slots.map((slot) => ({ ...slot, caption: "", yearOnly: false })) } : page,
+      ),
+    });
+    persistLater();
+  },
+  setYearOnly: (pageId, index, yearOnly) => {
+    set({
+      pages: patchSlot(get().pages, pageId, index, (slot) => ({ ...slot, yearOnly })),
+    });
+    persistLater();
+  },
+  captionPhotos: (ids, caption) => {
+    const wanted = new Set(ids);
+    if (wanted.size === 0) return;
+    const text = caption.slice(0, 140);
+    set({
+      pages: get().pages.map((page) => ({
+        ...page,
+        slots: page.slots.map((slot) => (slot.photoId && wanted.has(slot.photoId) ? { ...slot, caption: text } : slot)),
+      })),
+    });
+    persistLater();
+  },
+  datePhotos: (ids, takenAt) => {
+    const wanted = new Set(ids);
+    if (wanted.size === 0) return;
+    const label = takenAt != null ? formatHindiDate(takenAt) : "";
+    const photos = get().photos.map((photo) => (wanted.has(photo.id) ? { ...photo, takenAt } : photo));
+    const updated = get().pages.map((page) => ({
+      ...page,
+      slots: page.slots.map((slot) => {
+        if (!slot.photoId || !wanted.has(slot.photoId)) return slot;
+        const previous = slot.takenAt != null ? formatHindiDate(slot.takenAt) : "";
+        const caption =
+          previous && slot.caption.includes(previous)
+            ? slot.caption.replaceAll(previous, label).replace(/\s+/g, " ").trim()
+            : captionForDate(slot.caption, takenAt);
+        return { ...slot, takenAt, caption: caption.slice(0, 140) };
+      }),
+    }));
+    const placed: string[] = [];
+    for (const page of updated) {
+      for (const slot of page.slots) {
+        if (slot.photoId && !placed.includes(slot.photoId)) placed.push(slot.photoId);
+      }
+    }
+    const takenOf = new Map(photos.map((photo) => [photo.id, photo.takenAt]));
+    const ordered = sortIdsByDate(placed, takenOf);
+    const shape = new Map(photos.map((photo) => [photo.id, photo.w > photo.h]));
+    const pages =
+      ordered.length > 0
+        ? pagesInDateOrder(updated, ordered, get().orientation === "landscape", (id) => shape.get(id) === true)
+        : updated;
+    const active = pages.find((page) => page.slots.some((slot) => slot.photoId && wanted.has(slot.photoId)));
+    set({
+      photos,
+      pages,
+      activePageId: active?.id ?? get().activePageId,
+      selectedSlot: active ? 0 : get().selectedSlot,
+    });
+    persistLater();
+    for (const id of ids) void updateThumbMeta(id, { takenAt });
+  },
   setSlotDate: (pageId, index, takenAt) => {
+    const page = get().pages.find((item) => item.id === pageId);
+    const photoId = page?.slots[index]?.photoId ?? null;
+    if (photoId) {
+      get().datePhotos([photoId], takenAt);
+      return;
+    }
     set({
       pages: patchSlot(get().pages, pageId, index, (slot) => ({
         ...slot,
@@ -873,6 +1060,35 @@ export const useBook = create<BookState>((set, get) => {
         zoom: crop.zoom == null ? slot.zoom : clamp(crop.zoom, LIMITS.zoom.min, LIMITS.zoom.max),
         panX: crop.panX == null ? slot.panX : clamp(crop.panX, -1, 1),
         panY: crop.panY == null ? slot.panY : clamp(crop.panY, -1, 1),
+      })),
+    });
+    persistLater();
+  },
+  setSlotAdjust: (pageId, index, patch) => {
+    set({
+      pages: patchSlot(get().pages, pageId, index, (slot) => ({ ...slot, adjust: mergeAdjust(slot.adjust, patch) })),
+    });
+    persistLater();
+  },
+  applyAdjustToPhotos: (ids, adjust) => {
+    const wanted = new Set(ids);
+    if (wanted.size === 0) return;
+    const next = readAdjust(adjust);
+    set({
+      pages: get().pages.map((page) => ({
+        ...page,
+        slots: page.slots.map((slot) => (slot.photoId && wanted.has(slot.photoId) ? { ...slot, adjust: next } : slot)),
+      })),
+    });
+    persistLater();
+  },
+  rotateSlot: (pageId, index) => {
+    set({
+      pages: patchSlot(get().pages, pageId, index, (slot) => ({
+        ...slot,
+        turn: (((slot.turn ?? 0) + 1) % 4) as 0 | 1 | 2 | 3,
+        panX: 0,
+        panY: 0,
       })),
     });
     persistLater();

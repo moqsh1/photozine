@@ -24,6 +24,27 @@ export function formatHindiDate(stamp: number): string {
   return `${day} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
+export function formatYear(stamp: number): string {
+  return String(new Date(stamp).getUTCFullYear());
+}
+
+/** Caption line as it should be printed. Year-only swaps a full date for the year. An empty caption stays empty unless year-only is on. */
+export function visibleCaption(caption: string, takenAt: number | null, yearOnly: boolean): string {
+  const text = caption.trim();
+  if (takenAt == null) return text;
+  const full = formatHindiDate(takenAt);
+  const year = formatYear(takenAt);
+  if (yearOnly) {
+    if (!text || text === full || text === year) return year;
+    if (text.includes(full)) return text.replaceAll(full, year);
+    if (!text.includes(year)) return `${text} ${year}`.trim();
+    return text;
+  }
+  if (!text) return "";
+  if (text === year) return full;
+  return text;
+}
+
 export function stampToIso(stamp: number): string {
   const date = new Date(stamp);
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");

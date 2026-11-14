@@ -1,5 +1,6 @@
 import { clamp, emptySlot, LIMITS, type Density, type LayoutId, type Page, type Slot } from "@/lib/photobook/types";
 import { captionForDate } from "@/lib/photobook/date";
+import { readAdjust } from "@/lib/photobook/adjust";
 
 export type Area = { x: number; y: number; w: number; h: number };
 
@@ -104,6 +105,61 @@ const DENSITY_LAYOUT: Record<Density, LayoutId> = {
   4: "four",
 };
 
+export function areasFor(
+  layoutId: LayoutId,
+  split: number | null | undefined,
+  splitL?: number | null,
+  splitR?: number | null,
+  splitW?: number | null,
+): Area[] {
+  const base = LAYOUT_BY_ID[layoutId].areas;
+  const has = typeof split === "number" && Number.isFinite(split);
+  const hasL = typeof splitL === "number" && Number.isFinite(splitL);
+  const hasR = typeof splitR === "number" && Number.isFinite(splitR);
+  const hasW = typeof splitW === "number" && Number.isFinite(splitW);
+  if (!has && !hasL && !hasR && !hasW) return base;
+  const s = clamp(has ? (split as number) : layoutId === "three-banner" ? 0.58 : 0.5, 0.18, 0.82);
+  const width = clamp(hasW ? (splitW as number) : 0.5, 0.18, 0.82);
+  if (layoutId === "two-cols") {
+    return [
+      { x: 0, y: 0, w: s, h: 1 },
+      { x: s, y: 0, w: 1 - s, h: 1 },
+    ];
+  }
+  if (layoutId === "two-rows") {
+    return [
+      { x: 0, y: 0, w: 1, h: s },
+      { x: 0, y: s, w: 1, h: 1 - s },
+    ];
+  }
+  if (layoutId === "three-banner") {
+    const rest = 1 - s;
+    const left = rest * clamp(hasL ? (splitL as number) : 1, 0.2, 1);
+    const right = rest * clamp(hasR ? (splitR as number) : 1, 0.2, 1);
+    return [
+      { x: 0, y: 0, w: 1, h: s },
+      { x: 0, y: s, w: width, h: left },
+      { x: width, y: s, w: 1 - width, h: right },
+    ];
+  }
+  if (layoutId === "four") {
+    const right = clamp(hasR ? (splitR as number) : s, 0.18, 0.82);
+    return [
+      { x: 0, y: 0, w: width, h: s },
+      { x: width, y: 0, w: 1 - width, h: right },
+      { x: 0, y: s, w: width, h: 1 - s },
+      { x: width, y: right, w: 1 - width, h: 1 - right },
+    ];
+  }
+  return base;
+}
+
+export function splitAxis(layoutId: LayoutId): "x" | "y" | null {
+  if (layoutId === "two-cols") return "x";
+  if (layoutId === "two-rows" || layoutId === "three-banner" || layoutId === "four") return "y";
+  return null;
+}
+
 export function defaultLayout(count: Density): LayoutId {
   return DENSITY_LAYOUT[count];
 }
@@ -128,6 +184,9 @@ function asSlot(value: unknown): Slot {
     zoom: clamp(Number(slot.zoom) || 1, LIMITS.zoom.min, LIMITS.zoom.max),
     panX: clamp(Number(slot.panX) || 0, -1, 1),
     panY: clamp(Number(slot.panY) || 0, -1, 1),
+    turn: slot.turn === 1 || slot.turn === 2 || slot.turn === 3 ? slot.turn : 0,
+    yearOnly: slot.yearOnly === true,
+    adjust: readAdjust(slot.adjust),
   };
 }
 
@@ -135,5 +194,5 @@ export function withLayout(page: Page, layoutId: LayoutId): Page {
   const layout = LAYOUT_BY_ID[layoutId];
   const slots = (page.slots ?? []).slice(0, layout.slots).map((slot) => asSlot(slot));
   while (slots.length < layout.slots) slots.push(emptySlot());
-  return { ...page, layout: layoutId, slots };
+  return { ...page, layout: layoutId, slots, split: null, splitL: null, splitR: null, splitW: null };
 }

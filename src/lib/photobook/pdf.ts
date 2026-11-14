@@ -1,11 +1,12 @@
-import { containZoom, imageBox } from "@/lib/photobook/crop";
-import { formatHindiDate, isHindiDate } from "@/lib/photobook/date";
-import { cellRects, fitLandscapeOverPortraits, landscapeOverPortraitAspects } from "@/lib/photobook/geometry";
-import { LAYOUT_BY_ID } from "@/lib/photobook/layouts";
+import { adjustFilter, vignetteStrength } from "@/lib/photobook/adjust";
+import { imageBox, orientedSize } from "@/lib/photobook/crop";
+import { isHindiDate, visibleCaption } from "@/lib/photobook/date";
+import { pageFrameRects } from "@/lib/photobook/geometry";
 import { getBlob } from "@/lib/photobook/db";
 import { PAGE_INCHES, type Book, type Page, type Photo } from "@/lib/photobook/types";
 
-const DPI = 150;
+const DPI = 300;
+const JPEG_QUALITY = 1;
 const PAPER = "#fffdf8";
 const WELL = "#e5ddd0";
 const CAPTION = "#f3eee4";
@@ -117,17 +118,24 @@ async function drawPage(
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not draw the page.");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, width, height);
 
-  const layout = LAYOUT_BY_ID[page.layout];
-  const trio =
-    page.layout === "three-banner"
-      ? landscapeOverPortraitAspects(page.slots.map((slot) => (slot.photoId ? photos.get(slot.photoId) : undefined)))
-      : null;
-  const rects = trio
-    ? fitLandscapeOverPortraits(inches.w, inches.h, book.marginIn, book.gapIn, book.captionIn, trio)
-    : cellRects(layout.areas, inches.w, inches.h, book.marginIn, book.gapIn);
+  const rects = pageFrameRects(
+    page.layout,
+    page.split,
+    page.splitL,
+    page.splitR,
+    page.splitW,
+    page.slots.map((slot) => (slot.photoId ? photos.get(slot.photoId) : undefined)),
+    inches.w,
+    inches.h,
+    book.marginIn,
+    book.gapIn,
+    book.captionIn,
+  );
   const bitmaps: ImageBitmap[] = [];
   try {
     for (let index = 0; index < rects.length; index += 1) {
@@ -138,9 +146,7 @@ async function drawPage(
       const y = rect.y * DPI;
       const w = rect.w * DPI;
       const h = rect.h * DPI;
-      const captionText = slot.caption.trim();
-      const dateLabel = slot.takenAt != null ? formatHindiDate(slot.takenAt) : "";
-      const line = dateLabel && !captionText.includes(dateLabel) ? `${captionText} ${dateLabel}`.trim() : captionText;
+      const line = visibleCaption(slot.caption, slot.takenAt, Boolean(slot.yearOnly));
       const captionH = Math.min(h * 0.42, book.captionIn * DPI);
       const imageH = Math.max(1, h - captionH);
       ctx.fillStyle = WELL;
@@ -151,19 +157,33 @@ async function drawPage(
         if (bitmap) {
           bitmaps.push(bitmap);
           const frameAspect = w / imageH;
-          const zoom = trio ? containZoom(frameAspect, { w: bitmap.width, h: bitmap.height }) : slot.zoom;
-          const box = imageBox(frameAspect, { w: bitmap.width, h: bitmap.height }, zoom, trio ? 0 : slot.panX, trio ? 0 : slot.panY);
+          const turn = slot.turn ?? 0;
+          const oriented = orientedSize({ w: bitmap.width, h: bitmap.height }, turn);
+          const zoom = slot.zoom;
+          const box = imageBox(frameAspect, oriented, zoom, slot.panX, slot.panY);
+          const dw = (box.width / 100) * w;
+          const dh = (box.height / 100) * imageH;
+          const dx = x + (box.left / 100) * w;
+          const dy = y + (box.top / 100) * imageH;
           ctx.save();
           ctx.beginPath();
           ctx.rect(x, y, w, imageH);
           ctx.clip();
-          ctx.drawImage(
-            bitmap,
-            x + (box.left / 100) * w,
-            y + (box.top / 100) * imageH,
-            (box.width / 100) * w,
-            (box.height / 100) * imageH,
-          );
+          const filter = adjustFilter(slot.adjust);
+          if (filter) ctx.filter = filter;
+          ctx.translate(dx + dw / 2, dy + dh / 2);
+          ctx.rotate((turn * Math.PI) / 2);
+          if (turn % 2 === 1) ctx.drawImage(bitmap, -dh / 2, -dw / 2, dh, dw);
+          else ctx.drawImage(bitmap, -dw / 2, -dh / 2, dw, dh);
+          ctx.filter = "none";
+          const shade = vignetteStrength(slot.adjust);
+          if (shade > 0) {
+            const g = ctx.createRadialGradient(x + w / 2, y + imageH / 2, Math.min(w, imageH) * 0.28, x + w / 2, y + imageH / 2, Math.max(w, imageH) * 0.72);
+            g.addColorStop(0, "rgba(0,0,0,0)");
+            g.addColorStop(1, `rgba(0,0,0,${(shade * 0.72).toFixed(3)})`);
+            ctx.fillStyle = g;
+            ctx.fillRect(x, y, w, imageH);
+          }
           ctx.restore();
         }
       }
@@ -178,7 +198,7 @@ async function drawPage(
         ctx.beginPath();
         ctx.rect(x, y + imageH, w, captionH);
         ctx.clip();
-        const fontPx = captionH * 0.78;
+        const fontPx = captionH * 0.7;
         ctx.font = hindi
           ? `500 ${fontPx}px "Noto Sans Devanagari", sans-serif`
           : `italic 500 ${fontPx}px Fraunces, Georgia, serif`;
@@ -211,7 +231,7 @@ async function drawPage(
   ctx.fillText(label, right, cy);
 
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((file) => (file ? resolve(file) : reject(new Error("Could not encode the page."))), "image/jpeg", 0.86);
+    canvas.toBlob((file) => (file ? resolve(file) : reject(new Error("Could not encode the page."))), "image/jpeg", JPEG_QUALITY);
   });
   return new Uint8Array(await blob.arrayBuffer());
 }

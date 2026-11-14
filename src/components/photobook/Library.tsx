@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus, Search } from "lucide-react";
+import { ImagePlus } from "lucide-react";
 import { PHOTO_MIME } from "@/components/photobook/PageSheet";
+import { stampToIso, isoToStamp } from "@/lib/photobook/date";
 import { MAX_PHOTOS, type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -20,6 +21,9 @@ type LibraryProps = {
   onSamples: () => void;
   onDelete: (id: string) => void;
   onReorder: (fromId: string, toId: string) => void;
+  onCaption: (ids: string[], caption: string) => void;
+  onDate: (ids: string[], takenAt: number | null) => void;
+  onSelection: (ids: string[]) => void;
 };
 
 function usedIds(signature: string) {
@@ -44,8 +48,18 @@ export const Library = memo(function Library({
   onSamples,
   onDelete,
   onReorder,
+  onCaption,
+  onDate,
+  onSelection,
 }: LibraryProps) {
   const placed = usedIds(placedSignature);
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
+  const [dateDraft, setDateDraft] = useState("");
+  useEffect(() => {
+    onSelection(picking ? picked : []);
+  }, [onSelection, picking, picked]);
   const ordered = useMemo(() => {
     const rank = new Map<string, number>();
     let cursor = 0;
@@ -113,15 +127,27 @@ export const Library = memo(function Library({
       <div className="mt-3 flex items-center gap-2 px-4">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">Search photos</span>
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
           <input
-            className="field pl-9"
+            className="field"
             value={query}
             placeholder="Search"
             onChange={(event) => onQuery(event.target.value)}
           />
         </label>
       </div>
+      <button
+        type="button"
+        className={cn("btn mx-4 mt-3 w-[calc(100%-2rem)]", picking ? "btn-ink" : "btn-quiet")}
+        aria-pressed={picking}
+        onClick={() => {
+          setPicking((on) => !on);
+          setPicked([]);
+          setDraft("");
+          setDateDraft("");
+        }}
+      >
+        {picking ? "Done selecting" : "Select photos"}
+      </button>
       <div className="mt-3 flex gap-2 px-4" role="group" aria-label="Library filter">
         <FilterButton active={filter === "all"} onClick={() => onFilter("all")}>
           All
@@ -130,6 +156,44 @@ export const Library = memo(function Library({
           Not on a page
         </FilterButton>
       </div>
+      {picking && (
+        <div className="mt-3 px-4">
+          <label className="block">
+            <span className="text-sm text-muted">
+              {picked.length === 0 ? "Select photos, then type one caption" : `Caption for ${picked.length} photos`}
+            </span>
+            <textarea
+              className="field mt-2 min-h-16 py-2 font-serif italic"
+              value={draft}
+              maxLength={140}
+              rows={2}
+              placeholder="One caption for every selected photo"
+              disabled={picked.length === 0}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDraft(value);
+                onCaption(picked, value);
+              }}
+            />
+          </label>
+          <label className="mt-2 block">
+            <span className="text-sm text-muted">
+              {picked.length === 0 ? "Date for the selected photos" : `Date for ${picked.length} photos`}
+            </span>
+            <input
+              className="field mt-2"
+              type="date"
+              value={dateDraft}
+              disabled={picked.length === 0}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDateDraft(value);
+                onDate(picked, value ? isoToStamp(value) : null);
+              }}
+            />
+          </label>
+        </div>
+      )}
       <p className="mt-2 px-4 text-sm text-muted">Drag a photo onto another to change their order.</p>
       {placing && (
         <p className="mx-4 mt-3 rounded-sm bg-caption px-3 py-2 text-sm">
@@ -150,7 +214,7 @@ export const Library = memo(function Library({
         ) : visible.length === 0 ? (
           <p className="px-1 py-6 text-sm text-muted">Nothing matches.</p>
         ) : (
-          <ul className="grid grid-cols-3 gap-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-2">
             {visible.map((photo) => (
               <li key={photo.id} className="thumb-cell" data-photo-id={photo.id}>
                 <button
@@ -174,16 +238,45 @@ export const Library = memo(function Library({
                     const fromId = event.dataTransfer.getData(PHOTO_MIME);
                     if (fromId) onReorder(fromId, photo.id);
                   }}
-                  onClick={() => onFocus(photo.id)}
+                  onClick={() => {
+                    if (!picking) {
+                      onFocus(photo.id);
+                      return;
+                    }
+                    setPicked((current) => {
+                      const next = current.includes(photo.id) ? current.filter((id) => id !== photo.id) : [...current, photo.id];
+                      const captions = new Set<string>();
+                      const dates = new Set<string>();
+                      const chosen = new Set(next);
+                      for (const page of pages) {
+                        for (const slot of page.slots) {
+                          if (slot.photoId && chosen.has(slot.photoId)) captions.add(slot.caption);
+                        }
+                      }
+                      for (const item of photos) {
+                        if (chosen.has(item.id)) dates.add(item.takenAt != null ? stampToIso(item.takenAt) : "");
+                      }
+                      setDraft(captions.size === 1 ? [...captions][0] : "");
+                      setDateDraft(dates.size === 1 ? [...dates][0] : "");
+                      return next;
+                    });
+                  }}
                   className={cn(
                     "relative aspect-square w-full overflow-hidden bg-well",
-                    selectedId === photo.id || placingId === photo.id ? "ring-2 ring-accent" : "ring-1 ring-line",
+                    picking && picked.includes(photo.id)
+                      ? "ring-2 ring-accent"
+                      : selectedId === photo.id || placingId === photo.id
+                        ? "ring-2 ring-accent"
+                        : "ring-1 ring-line",
                     overId === photo.id && "ring-2 ring-accent",
                   )}
-                  aria-pressed={selectedId === photo.id || placingId === photo.id}
+                  aria-pressed={picking ? picked.includes(photo.id) : selectedId === photo.id || placingId === photo.id}
                   aria-label={`Place ${photo.name}`}
                 >
                   <img src={photo.thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                  {picking && picked.includes(photo.id) && (
+                    <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-accent text-[10px] text-page">✓</span>
+                  )}
                   {placed.has(photo.id) && <span className="absolute right-1 bottom-1 size-2 rounded-full bg-accent" />}
                 </button>
               </li>

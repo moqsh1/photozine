@@ -1,4 +1,4 @@
-const FULL_EDGE = 2200;
+const FULL_EDGE = 3600;
 const THUMB_EDGE = 420;
 
 export async function decodeImage(file: Blob): Promise<{ blob: Blob; thumb: Blob; w: number; h: number }> {
@@ -6,7 +6,7 @@ export async function decodeImage(file: Blob): Promise<{ blob: Blob; thumb: Blob
   try {
     const full = draw(bitmap, FULL_EDGE);
     const thumb = draw(bitmap, THUMB_EDGE);
-    const blob = await canvasToJpeg(full.canvas, 0.86);
+    const blob = await canvasToJpeg(full.canvas, 0.95);
     const thumbBlob = await canvasToJpeg(thumb.canvas, 0.74);
     return { blob, thumb: thumbBlob, w: full.w, h: full.h };
   } finally {

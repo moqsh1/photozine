@@ -1,6 +1,7 @@
-import { memo, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import * as Slider from "@radix-ui/react-slider";
-import { ChevronLeft, ChevronRight, ClipboardPaste, Copy, Plus, Scissors, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardPaste, Copy, Plus, RotateCw, Scissors, Trash2 } from "lucide-react";
+import { ADJUST_FIELDS, type Adjust } from "@/lib/photobook/adjust";
 import { LAYOUTS, LAYOUT_BY_ID } from "@/lib/photobook/layouts";
 import {
   LIMITS,
@@ -26,12 +27,20 @@ type InspectorProps = {
   caption: string;
   dateIso: string;
   zoom: number;
+  adjust: Adjust;
+  selectedCount: number;
   hasPhoto: boolean;
   onLayout: (layout: LayoutId) => void;
+  onSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   onCaption: (value: string) => void;
   onDate: (iso: string) => void;
   onZoom: (zoom: number) => void;
+  onAdjust: (patch: Partial<Adjust>) => void;
+  onApplyAdjust: () => void;
+  onResetAdjust: () => void;
   onResetCrop: () => void;
+  onCenter: () => void;
+  onRotate: () => void;
   onClearSlot: () => void;
   canPaste: boolean;
   onCut: () => void;
@@ -45,13 +54,24 @@ type InspectorProps = {
   onAddPage: () => void;
   onDuplicate: () => void;
   onDeletePage: () => void;
+  onSelectPage: () => void;
+  pageSelected: boolean;
+  onClearPageCaptions: () => void;
+  onClearCaption: () => void;
+  yearOnly: boolean;
+  onYearOnly: (yearOnly: boolean) => void;
   onMove: (dir: -1 | 1) => void;
+  onPlaceAt: (pageNumber: number) => void;
   onClearPages: () => void;
   onDeletePhotos: () => void;
 };
 
 export const Inspector = memo(function Inspector(props: InspectorProps) {
   const size = PAGE_INCHES[props.orientation];
+  const [spot, setSpot] = useState(String(props.pageIndex + 1));
+  useEffect(() => {
+    setSpot(String(props.pageIndex + 1));
+  }, [props.pageIndex, props.page?.id]);
   return (
     <div className="scroll-thin flex h-full min-h-0 flex-col overflow-y-auto">
       <section className="px-4 pt-4 pb-4">
@@ -63,8 +83,15 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
         </div>
         <p className="mt-1 text-sm text-muted">
           {size.w} × {size.h} in · {props.page ? LAYOUT_BY_ID[props.page.layout].slots : 0} frames
+          {props.pageSelected ? " · Page selected" : ""}
         </p>
-        <div className="mt-3 grid grid-cols-4 gap-2" role="group" aria-label="Page layout">
+        <button type="button" className={cn("btn mt-3 w-full", props.pageSelected ? "btn-ink" : "btn-quiet")} onClick={props.onSelectPage}>
+          Select page
+        </button>
+        <button type="button" className="btn btn-quiet mt-2 w-full" onClick={props.onClearPageCaptions} disabled={!props.page}>
+          Clear page captions
+        </button>
+        <div className="mt-3 flex gap-1" role="group" aria-label="Page layout">
           {LAYOUTS.filter((layout) => layout.id !== "three-feature" && layout.id !== "three-cols" && layout.id !== "half").map((layout) => {
             const active = props.page?.layout === layout.id;
             return (
@@ -75,38 +102,76 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
                 aria-label={layout.hint}
                 onClick={() => props.onLayout(layout.id)}
                 className={cn(
-                  "flex min-h-11 flex-col items-center justify-center gap-1 rounded-sm px-1 py-2",
+                  "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-sm px-0.5 py-2",
                   active ? "bg-ink text-page" : "bg-caption text-ink",
                 )}
               >
                 <LayoutGlyph layoutId={layout.id} active={active} />
-                <span className="text-xs">{layout.name}</span>
+                <span className="text-[10px] leading-none">{layout.name}</span>
               </button>
             );
           })}
         </div>
-        <div className="mt-3 grid grid-cols-4 gap-2">
+        <div className="mt-3 flex items-end gap-2">
+          <label className="min-w-0 flex-1">
+            <span className="text-sm text-muted">Move this page to</span>
+            <input
+              className="field mt-2"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={props.pageCount}
+              value={spot}
+              aria-label="Page number to move to"
+              onChange={(event) => setSpot(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                props.onPlaceAt(Number(spot));
+              }}
+            />
+          </label>
+          <button type="button" className="btn btn-ink" onClick={() => props.onPlaceAt(Number(spot))}>
+            Place
+          </button>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <IconButton label="Previous page" onClick={() => props.onMove(-1)} disabled={props.pageIndex <= 0}>
             <ChevronLeft className="size-4" />
           </IconButton>
           <IconButton label="Next page" onClick={() => props.onMove(1)} disabled={props.pageIndex >= props.pageCount - 1}>
             <ChevronRight className="size-4" />
           </IconButton>
-          <IconButton label="Duplicate page" onClick={props.onDuplicate}>
-            <Copy className="size-4" />
-          </IconButton>
-          <IconButton label="Add page" onClick={props.onAddPage}>
-            <Plus className="size-4" />
-          </IconButton>
         </div>
-        <button type="button" className="btn btn-quiet mt-2 w-full" onClick={props.onDeletePage}>
-          <Trash2 className="size-4" aria-hidden="true" />
-          Remove this page
-        </button>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onDuplicate}>
+            <Copy className="size-4" aria-hidden="true" />
+            Duplicate
+          </button>
+          <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onAddPage}>
+            <Plus className="size-4" aria-hidden="true" />
+            Add page
+          </button>
+          <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onDeletePage}>
+            <Trash2 className="size-4" aria-hidden="true" />
+            Remove
+          </button>
+        </div>
       </section>
 
       <section className="border-t border-line px-4 py-4">
         <h2 className="font-serif text-xl">Frame</h2>
+        {props.hasPhoto && (
+          <InchSlider
+            className="mt-3"
+            label="Crop zoom"
+            display={`${Math.round(props.zoom * 100)}%`}
+            min={LIMITS.zoom.min}
+            max={LIMITS.zoom.max}
+            step={LIMITS.zoom.step}
+            value={props.zoom}
+            onChange={props.onZoom}
+          />
+        )}
         <div className="mt-3 grid grid-cols-4 gap-2">
           <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onCut} disabled={!props.hasPhoto}>
             <Scissors className="size-4" aria-hidden="true" />
@@ -125,6 +190,31 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
             Delete
           </button>
         </div>
+        {props.hasPhoto && (
+          <div className="mt-4 border-t border-line pt-3">
+            <h3 className="font-serif text-lg">Adjust</h3>
+            <p className="mt-1 text-sm text-muted">Same controls as the iPhone Photos app.</p>
+            {ADJUST_FIELDS.map((field) => (
+              <InchSlider
+                key={field.key}
+                className="mt-2"
+                label={field.label}
+                display={String(Math.round(props.adjust[field.key]))}
+                min={field.min}
+                max={field.max}
+                step={1}
+                value={props.adjust[field.key]}
+                onChange={(value) => props.onAdjust({ [field.key]: value })}
+              />
+            ))}
+            <button type="button" className="btn btn-quiet mt-3 w-full" onClick={props.onResetAdjust}>
+              Reset adjustments
+            </button>
+            <button type="button" className="btn btn-ink mt-2 w-full" onClick={props.onApplyAdjust} disabled={props.selectedCount === 0}>
+              Apply to selected photos{props.selectedCount > 0 ? ` (${props.selectedCount})` : ""}
+            </button>
+          </div>
+        )}
         {props.hasPhoto ? (
           <>
             <label className="mt-3 block">
@@ -138,6 +228,17 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
                 onChange={(event) => props.onCaption(event.target.value)}
               />
             </label>
+            <button type="button" className="btn btn-quiet mt-2 w-full" onClick={props.onClearCaption} disabled={!props.caption.trim() && !props.yearOnly}>
+              Clear frame caption
+            </button>
+            <button
+              type="button"
+              className={cn("btn mt-2 w-full", props.yearOnly ? "btn-ink" : "btn-quiet")}
+              onClick={() => props.onYearOnly(!props.yearOnly)}
+              disabled={!props.dateIso && !props.yearOnly}
+            >
+              {props.yearOnly ? "Full date" : "Year only"}
+            </button>
             <label className="mt-3 block">
               <span className="text-sm text-muted">Date on this frame</span>
               <input
@@ -147,20 +248,14 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
                 onChange={(event) => props.onDate(event.target.value)}
               />
             </label>
-            <InchSlider
-              className="mt-3"
-              label="Crop zoom"
-              display={`${Math.round(props.zoom * 100)}%`}
-              min={LIMITS.zoom.min}
-              max={LIMITS.zoom.max}
-              step={LIMITS.zoom.step}
-              value={props.zoom}
-              onChange={props.onZoom}
-            />
-            <p className="mt-1 text-sm text-pretty text-muted">
-              Below 100% leaves padding around the photo. Above 100% crops the edges. The photo is never stretched.
-            </p>
             <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" className="btn btn-quiet" onClick={props.onCenter}>
+                Center
+              </button>
+              <button type="button" className="btn btn-quiet" onClick={props.onRotate}>
+                <RotateCw className="size-4" aria-hidden="true" />
+                Rotate
+              </button>
               <button type="button" className="btn btn-quiet" onClick={props.onResetCrop}>
                 Reset crop
               </button>
@@ -173,6 +268,80 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
           <p className="mt-2 text-sm text-pretty text-muted">
             Select a frame, then tap a photo or drop one in. Each photo keeps a caption on its bottom edge.
           </p>
+        )}
+        {props.page && props.page.layout !== "one" && props.page.layout !== "half" && (
+          <div className="mt-4 border-t border-line pt-4">
+            <InchSlider
+              label={props.page.layout === "two-cols" ? "Left frame" : props.page.layout === "four" ? "Left top" : "Top frame"}
+              display={`${Math.round((props.page.split ?? (props.page.layout === "three-banner" ? 0.58 : 0.5)) * 100)}%`}
+              min={0.18}
+              max={0.82}
+              step={0.01}
+              value={props.page.split ?? (props.page.layout === "three-banner" ? 0.58 : 0.5)}
+              onChange={(value) => props.onSplit(value, "top")}
+            />
+            {props.page.layout === "three-banner" && (
+              <>
+                <InchSlider
+                  className="mt-2"
+                  label="Lower left"
+                  display={`${Math.round((props.page.splitL ?? 1) * 100)}%`}
+                  min={0.2}
+                  max={1}
+                  step={0.01}
+                  value={props.page.splitL ?? 1}
+                  onChange={(value) => props.onSplit(value, "left")}
+                />
+                <InchSlider
+                  className="mt-2"
+                  label="Lower right"
+                  display={`${Math.round((props.page.splitR ?? 1) * 100)}%`}
+                  min={0.2}
+                  max={1}
+                  step={0.01}
+                  value={props.page.splitR ?? 1}
+                  onChange={(value) => props.onSplit(value, "right")}
+                />
+              </>
+            )}
+            {props.page.layout === "four" && (
+              <InchSlider
+                className="mt-2"
+                label="Right top"
+                display={`${Math.round((props.page.splitR ?? props.page.split ?? 0.5) * 100)}%`}
+                min={0.18}
+                max={0.82}
+                step={0.01}
+                value={props.page.splitR ?? props.page.split ?? 0.5}
+                onChange={(value) => props.onSplit(value, "right")}
+              />
+            )}
+            {(props.page.layout === "three-banner" || props.page.layout === "four") && (
+              <InchSlider
+                className="mt-2"
+                label="Left width"
+                display={`${Math.round((props.page.splitW ?? 0.5) * 100)}%`}
+                min={0.18}
+                max={0.82}
+                step={0.01}
+                value={props.page.splitW ?? 0.5}
+                onChange={(value) => props.onSplit(value, "width")}
+              />
+            )}
+            <button
+              type="button"
+              className="btn btn-quiet mt-2 w-full"
+              onClick={() => {
+                props.onSplit(null, "top");
+                props.onSplit(null, "left");
+                props.onSplit(null, "right");
+                props.onSplit(null, "width");
+              }}
+              disabled={props.page.split == null && props.page.splitL == null && props.page.splitR == null && props.page.splitW == null}
+            >
+              Reset frame sizes
+            </button>
+          </div>
         )}
       </section>
 

@@ -1,20 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, ChevronLeft, ChevronRight, FolderOpen, Images, Plus, Printer, Save, SlidersHorizontal, Undo2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Images, Plus, Printer, Save, Undo2 } from "lucide-react";
 import { Inspector } from "@/components/photobook/Inspector";
 import { Library } from "@/components/photobook/Library";
+import { MenuBar } from "@/components/photobook/MenuBar";
 import { PageSheet } from "@/components/photobook/PageSheet";
 import { PageStrip } from "@/components/photobook/PageStrip";
+import { emptyAdjust } from "@/lib/photobook/adjust";
 import { isoToStamp, stampToIso } from "@/lib/photobook/date";
 import { newBookHref } from "@/lib/photobook/db";
 import { deliverFile } from "@/lib/photobook/download";
 import { renderBookPdf } from "@/lib/photobook/pdf";
 import { buildProjectFile, pdfFilename, projectFilename, readProjectFile } from "@/lib/photobook/project";
+import { linkSyncFolder, reloadSyncFolder, syncFolderName, syncSupported } from "@/lib/photobook/sync";
 import { useBook } from "@/lib/photobook/store";
 import { PAGE_INCHES, type Book, type Page } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
-type Pane = "library" | "edit" | "pages";
 type ConfirmKind = "pages" | "photos" | "load" | null;
 type ExportMode = "current" | "selected" | "all";
 
@@ -24,7 +26,6 @@ export function Studio() {
   const importTarget = useRef<{ pageId: string; index: number } | null>(null);
   const projectRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const [pane, setPane] = useState<Pane>("library");
   const [confirm, setConfirm] = useState<ConfirmKind>(null);
   const [pendingProject, setPendingProject] = useState<File | null>(null);
   const [printPages, setPrintPages] = useState<Page[] | null>(null);
@@ -35,6 +36,11 @@ export function Studio() {
   const [exportNote, setExportNote] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [handoff, setHandoff] = useState<{ url: string; name: string } | null>(null);
+  const [pickedPhotos, setPickedPhotos] = useState<string[]>([]);
+  const [pagePicking, setPagePicking] = useState(false);
+  const [pickedPages, setPickedPages] = useState<string[]>([]);
+  const [syncName, setSyncName] = useState<string | null>(null);
+  const onPhotoSelection = useCallback((ids: string[]) => setPickedPhotos(ids), []);
   const pdfBlob = useRef<Blob | null>(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const openFiles = useCallback(() => {
@@ -58,7 +64,7 @@ export function Studio() {
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [book.ready, pane]);
+  }, [book.ready]);
 
   const pagePhotoKey = book.pages
     .map((page) => `${page.id}:${page.slots.map((slot) => slot.photoId ?? "").join(",")}`)
@@ -199,6 +205,10 @@ export function Studio() {
     }
   }
 
+  useEffect(() => {
+    void syncFolderName().then(setSyncName);
+  }, []);
+
   async function onSaveProject() {
     book.setPreparingPrint(true);
     try {
@@ -215,6 +225,28 @@ export function Studio() {
       complain(error instanceof Error ? error.message : "Could not save the project.");
     } finally {
       book.setPreparingPrint(false);
+    }
+  }
+
+  async function onLinkSync() {
+    try {
+      const linked = await linkSyncFolder({ book: snapshot(), photos: book.photos });
+      setSyncName(linked.name);
+      if (linked.remote) await book.loadProject(linked.remote.book, linked.remote.photos);
+      else setProblem(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      complain(error instanceof Error ? error.message : "Could not link that folder.");
+    }
+  }
+
+  async function onLoadSync() {
+    try {
+      const remote = await reloadSyncFolder();
+      if (remote) await book.loadProject(remote.book, remote.photos);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      complain(error instanceof Error ? error.message : "Could not load the synced book.");
     }
   }
 
@@ -312,6 +344,9 @@ export function Studio() {
         void book.deletePhoto(id);
       }}
       onReorder={book.reorderPhotos}
+      onCaption={book.captionPhotos}
+      onDate={book.datePhotos}
+      onSelection={onPhotoSelection}
     />
   );
 
@@ -329,14 +364,22 @@ export function Studio() {
       caption={slot?.caption ?? ""}
       dateIso={slot?.takenAt != null ? stampToIso(slot.takenAt) : ""}
       zoom={slot?.zoom ?? 1}
+      adjust={slot?.adjust ?? emptyAdjust()}
+      selectedCount={pickedPhotos.length}
       hasPhoto={Boolean(slot?.photoId)}
       onLayout={book.setPageLayout}
+      onSplit={book.setPageSplit}
       onCaption={(value) => page && slotIndex != null && book.setSlotCaption(page.id, slotIndex, value)}
       onDate={(iso) => page && slotIndex != null && book.setSlotDate(page.id, slotIndex, iso ? isoToStamp(iso) : null)}
       onZoom={(zoom) => page && slotIndex != null && book.setSlotCrop(page.id, slotIndex, { zoom })}
+      onAdjust={(patch) => page && slotIndex != null && book.setSlotAdjust(page.id, slotIndex, patch)}
+      onApplyAdjust={() => page && slot && book.applyAdjustToPhotos(pickedPhotos, slot.adjust)}
+      onResetAdjust={() => page && slotIndex != null && book.setSlotAdjust(page.id, slotIndex, emptyAdjust())}
       onResetCrop={() =>
         page && slotIndex != null && book.setSlotCrop(page.id, slotIndex, { zoom: 1, panX: 0, panY: 0 })
       }
+      onCenter={() => page && slotIndex != null && book.setSlotCrop(page.id, slotIndex, { panX: 0, panY: 0 })}
+      onRotate={() => page && slotIndex != null && book.rotateSlot(page.id, slotIndex)}
       onClearSlot={() => page && slotIndex != null && book.clearSlot(page.id, slotIndex)}
       canPaste={Boolean(book.clipboard?.photoId)}
       onCut={book.cutSlot}
@@ -350,7 +393,18 @@ export function Studio() {
       onAddPage={book.addPage}
       onDuplicate={book.duplicatePage}
       onDeletePage={book.deletePage}
+      onSelectPage={book.clearSlotSelection}
+      pageSelected={book.selectedSlot == null}
+      onClearPageCaptions={book.clearPageCaptions}
+      onClearCaption={() => {
+        if (!page || slotIndex == null) return;
+        book.setSlotCaption(page.id, slotIndex, "");
+        book.setYearOnly(page.id, slotIndex, false);
+      }}
+      yearOnly={Boolean(slot?.yearOnly)}
+      onYearOnly={(yearOnly) => page && slotIndex != null && book.setYearOnly(page.id, slotIndex, yearOnly)}
       onMove={book.stepPage}
+      onPlaceAt={book.placePageAt}
       onClearPages={() => setConfirm("pages")}
       onDeletePhotos={() => setConfirm("photos")}
     />
@@ -406,6 +460,40 @@ export function Studio() {
           <span className="hidden sm:inline">PDF</span>
         </button>
       </header>
+      <MenuBar
+        onNew={() => {
+          const opened = window.open(newBookHref(), "_blank");
+          if (!opened) setProblem("The new book was blocked. Allow pop-ups, then tap New again.");
+        }}
+        onOpen={() => projectRef.current?.click()}
+        onSave={() => void onSaveProject()}
+        onExport={openExport}
+        onSync={() => void onLinkSync()}
+        onLoadSync={() => void onLoadSync()}
+        syncName={syncName}
+        canSync={syncSupported()}
+        onAddPage={book.addPage}
+        onDuplicate={book.duplicatePage}
+        onDeletePage={book.deletePage}
+        onPrev={() => book.stepPage(-1)}
+        onNext={() => book.stepPage(1)}
+        onLayout={book.setPageLayout}
+        layout={page?.layout ?? null}
+        hasPhoto={Boolean(slot?.photoId)}
+        canPaste={Boolean(book.clipboard?.photoId)}
+        onRotate={() => page && slotIndex != null && book.rotateSlot(page.id, slotIndex)}
+        onCenter={() => page && slotIndex != null && book.setSlotCrop(page.id, slotIndex, { panX: 0, panY: 0 })}
+        onResetCrop={() => page && slotIndex != null && book.setSlotCrop(page.id, slotIndex, { zoom: 1, panX: 0, panY: 0 })}
+        onCut={book.cutSlot}
+        onCopy={book.copySlot}
+        onPaste={book.pasteSlot}
+        onClearSlot={() => page && slotIndex != null && book.clearSlot(page.id, slotIndex)}
+        orientation={book.orientation}
+        onOrientation={book.setOrientation}
+        density={book.density}
+        onDensity={book.setDensity}
+        busy={book.preparingPrint || !book.ready || book.importing != null}
+      />
 
       {book.importing && (
         <div className="no-print border-b border-line bg-surface px-4 py-2">
@@ -452,18 +540,41 @@ export function Studio() {
           <p className="font-serif text-2xl">Opening your book…</p>
         </main>
       ) : (
-        <div className="no-print flex min-h-0 flex-1 flex-col lg:flex-row">
-          <aside
-            className={cn(
-              "order-2 min-h-0 border-line bg-surface lg:order-none lg:flex lg:h-auto lg:w-80 lg:shrink-0 lg:flex-col lg:border-r",
-              pane === "library" ? "flex h-72 shrink-0 flex-col border-t" : "max-lg:hidden",
-            )}
-          >
+        <div className="no-print flex min-h-0 min-w-0 flex-1 overflow-x-auto">
+          <aside className="flex h-full w-64 shrink-0 flex-col border-r border-line bg-surface">
             {library}
           </aside>
-
-          <section className="order-1 flex min-h-0 min-w-0 flex-1 flex-col">
-            <div ref={stageRef} className="relative min-h-0 flex-1">
+          <aside className="flex h-full w-80 shrink-0 flex-col border-r border-line bg-surface">
+            <PageStrip
+              pages={book.pages}
+              activePageId={page?.id ?? null}
+              orientation={book.orientation}
+              photoById={photoById}
+              onSelect={book.selectPage}
+              onReorder={book.movePageTo}
+              onReorderPhotos={book.reorderPhotos}
+              picking={pagePicking}
+              pickedIds={pickedPages}
+              onTogglePick={(id) => setPickedPages((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
+              onPickMode={(on) => {
+                setPagePicking(on);
+                if (!on) setPickedPages([]);
+              }}
+              onClearPicked={() => {
+                book.clearCaptionsOnPages(pickedPages);
+                setPickedPages([]);
+                setPagePicking(false);
+              }}
+            />
+          </aside>
+          <section className="relative flex h-full min-w-72 flex-1 flex-col">
+            <div
+              ref={stageRef}
+              className="relative min-h-0 flex-1"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) book.clearSlotSelection();
+              }}
+            >
               {page && fitted.w > 0 && (
                 <div
                   className="sheet-shadow absolute top-1/2 left-1/2 bg-page"
@@ -480,8 +591,10 @@ export function Studio() {
                     pageNumber={pageIndex + 1}
                     interactive
                     selectedSlot={book.selectedSlot}
+                    pageSelected={book.selectedSlot == null}
                     placing={Boolean(book.placingId)}
                     onSelectSlot={book.selectSlot}
+                    onDeselect={book.clearSlotSelection}
                     onCommitPan={(index, panX, panY) => book.setSlotCrop(page.id, index, { panX, panY })}
                     onDropPhoto={(index, photoId) => book.assignPhoto(page.id, index, photoId)}
                     onSwap={(index, fromPageId, fromIndex) => book.swapSlots(fromPageId, fromIndex, page.id, index)}
@@ -495,65 +608,31 @@ export function Studio() {
               <p className="pointer-events-none absolute bottom-3 left-4 text-xs tracking-wide text-muted uppercase">
                 {inches.w} × {inches.h} in
               </p>
-            </div>
-            <div className="flex items-center justify-between gap-2 border-t border-line bg-surface px-3 py-1 lg:hidden">
               <button
                 type="button"
-                className="btn btn-quiet px-3"
+                className="absolute top-1/2 left-2 z-30 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-page/90 text-ink shadow-sm ring-1 ring-line disabled:opacity-30"
                 aria-label="Previous page"
                 onClick={() => book.stepPage(-1)}
                 disabled={pageIndex <= 0}
               >
-                <ChevronLeft className="size-4" />
+                <ChevronLeft className="size-5" />
               </button>
-              <p className="text-sm tabular-nums">
-                Page {pageIndex + 1} of {book.pages.length}
-              </p>
               <button
                 type="button"
-                className="btn btn-quiet px-3"
+                className="absolute top-1/2 right-2 z-30 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-page/90 text-ink shadow-sm ring-1 ring-line disabled:opacity-30"
                 aria-label="Next page"
                 onClick={() => book.stepPage(1)}
                 disabled={pageIndex >= book.pages.length - 1}
               >
-                <ChevronRight className="size-4" />
+                <ChevronRight className="size-5" />
               </button>
             </div>
-            <div className={cn("border-t border-line bg-surface", pane === "pages" ? "block lg:block" : "hidden lg:block")}>
-              <PageStrip
-                pages={book.pages}
-                activePageId={page?.id ?? null}
-                orientation={book.orientation}
-                photoById={photoById}
-                onSelect={book.selectPage}
-                onReorder={book.movePageTo}
-                onReorderPhotos={book.reorderPhotos}
-              />
-            </div>
           </section>
-
-          <aside
-            className={cn(
-              "order-3 min-h-0 border-line bg-surface lg:order-none lg:block lg:h-auto lg:w-80 lg:shrink-0 lg:overflow-visible lg:border-l",
-              pane === "edit" ? "h-80 shrink-0 overflow-hidden border-t" : "max-lg:hidden",
-            )}
-          >
+          <aside className="relative flex h-full w-72 shrink-0 flex-col border-l border-line bg-surface">
             {inspector}
           </aside>
         </div>
       )}
-
-      <nav className="safe-bottom no-print grid grid-cols-3 border-t border-line bg-surface lg:hidden" aria-label="Editor">
-        <PaneButton active={pane === "pages"} onClick={() => setPane("pages")} label="Pages">
-          <BookOpen className="size-4" />
-        </PaneButton>
-        <PaneButton active={pane === "library"} onClick={() => setPane("library")} label="Photos">
-          <Images className="size-4" />
-        </PaneButton>
-        <PaneButton active={pane === "edit"} onClick={() => setPane("edit")} label="Adjust">
-          <SlidersHorizontal className="size-4" />
-        </PaneButton>
-      </nav>
 
       <input
         ref={fileRef}
@@ -736,33 +815,6 @@ export function Studio() {
         </div>
       )}
     </div>
-  );
-}
-
-function PaneButton({
-  active,
-  onClick,
-  label,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex min-h-14 flex-col items-center justify-center gap-1 text-xs",
-        active ? "text-accent" : "text-muted",
-      )}
-      aria-pressed={active}
-    >
-      {children}
-      {label}
-    </button>
   );
 }
 

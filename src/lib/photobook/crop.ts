@@ -40,3 +40,40 @@ export function containZoom(frameAspect: number, image: ImageSize): number {
   const fr = Math.max(0.05, frameAspect);
   return clamp(ir > fr ? fr / ir : ir / fr, LIMITS.zoom.min, 1);
 }
+
+export type Turn = 0 | 1 | 2 | 3;
+
+export function orientedSize(image: ImageSize, turn: number): ImageSize {
+  return turn % 2 === 1 ? { w: image.h, h: image.w } : image;
+}
+
+/** CSS placement so a quarter-turn still covers the same box without stretching. */
+export function placedImageStyle(
+  box: { left: number; top: number; width: number; height: number },
+  turn: number,
+  frameAspect: number,
+): { left: string; top: string; width: string; height: string; transform?: string; transformOrigin: string } {
+  if (turn % 2 === 0) {
+    return {
+      left: `${box.left}%`,
+      top: `${box.top}%`,
+      width: `${box.width}%`,
+      height: `${box.height}%`,
+      transform: turn === 2 ? "rotate(180deg)" : undefined,
+      transformOrigin: "center center",
+    };
+  }
+  const fr = Math.max(0.05, frameAspect);
+  const width = box.height / fr;
+  const height = box.width * fr;
+  const cx = box.left + box.width / 2;
+  const cy = box.top + box.height / 2;
+  return {
+    left: `${cx - width / 2}%`,
+    top: `${cy - height / 2}%`,
+    width: `${width}%`,
+    height: `${height}%`,
+    transform: `rotate(${turn * 90}deg)`,
+    transformOrigin: "center center",
+  };
+}

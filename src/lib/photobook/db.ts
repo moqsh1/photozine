@@ -82,6 +82,32 @@ export async function saveBook(book: Book): Promise<void> {
   await transactionDone(tx);
 }
 
+export async function loadSyncHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await openDb();
+  const value = await requestToPromise(db.transaction("book", "readonly").objectStore("book").get("sync-dir"));
+  return value && typeof value === "object" && "getFileHandle" in value ? (value as FileSystemDirectoryHandle) : null;
+}
+
+export async function saveSyncHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction("book", "readwrite");
+  tx.objectStore("book").put(handle, "sync-dir");
+  await transactionDone(tx);
+}
+
+export async function loadSyncStamp(): Promise<number> {
+  const db = await openDb();
+  const value = await requestToPromise(db.transaction("book", "readonly").objectStore("book").get("sync-stamp"));
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+export async function saveSyncStamp(stamp: number): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction("book", "readwrite");
+  tx.objectStore("book").put(stamp, "sync-stamp");
+  await transactionDone(tx);
+}
+
 export async function updateThumbMeta(id: string, patch: { takenAt?: number | null; seq?: number }): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
