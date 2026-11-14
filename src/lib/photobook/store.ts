@@ -169,6 +169,13 @@ function bookIsEmpty(pages: Page[]) {
   return pages.every((page) => page.slots.every((slot) => !slot.photoId));
 }
 
+let cloudTimer = 0;
+let cloudPush: ((book: Book, photos: Photo[]) => void) | null = null;
+
+export function onBookCloud(push: (book: Book, photos: Photo[]) => void) {
+  cloudPush = push;
+}
+
 function persistLater() {
   noteHistory();
   dirty = true;
@@ -176,7 +183,13 @@ function persistLater() {
   window.clearTimeout(saveTimer);
   const book = snapshot(useBook.getState());
   saveTimer = window.setTimeout(() => {
-    void saveBook(book).then(() => queueFolderSync(book, useBook.getState().photos));
+    const latest = snapshot(useBook.getState());
+    void saveBook(latest).then(() => {
+      queueFolderSync(latest, useBook.getState().photos);
+      if (!cloudPush) return;
+      window.clearTimeout(cloudTimer);
+      cloudTimer = window.setTimeout(() => cloudPush?.(latest, useBook.getState().photos), 1500);
+    });
   }, 220);
 }
 

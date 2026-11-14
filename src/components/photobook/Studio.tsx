@@ -8,12 +8,13 @@ import { PageSheet } from "@/components/photobook/PageSheet";
 import { PageStrip } from "@/components/photobook/PageStrip";
 import { emptyAdjust } from "@/lib/photobook/adjust";
 import { isoToStamp, stampToIso } from "@/lib/photobook/date";
-import { newBookHref } from "@/lib/photobook/db";
+import { newBookHref, getBlob } from "@/lib/photobook/db";
+import { connectDrive, loadBookFromDrive, saveBookToDrive } from "@/lib/photobook/drive-client";
 import { deliverFile } from "@/lib/photobook/download";
 import { renderBookPdf } from "@/lib/photobook/pdf";
 import { buildProjectFile, pdfFilename, projectFilename, readProjectFile } from "@/lib/photobook/project";
 import { linkSyncFolder, reloadSyncFolder, syncFolderName, syncSupported } from "@/lib/photobook/sync";
-import { useBook } from "@/lib/photobook/store";
+import { onBookCloud, useBook } from "@/lib/photobook/store";
 import { PAGE_INCHES, type Book, type Page } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -228,6 +229,26 @@ export function Studio() {
     }
   }
 
+  const driveOn = useRef(false);
+  useEffect(() => {
+    const flag = new URLSearchParams(window.location.search).get("drive");
+    if (flag === "connected") {
+      driveOn.current = true;
+      setProblem("Google Drive connected. Changes save to your private Photozine folder.");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("drive");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    } else if (flag === "denied") {
+      setProblem("Google Drive was not connected.");
+    }
+    onBookCloud((saved, photos) => {
+      if (!driveOn.current) return;
+      void saveBookToDrive(saved, photos, getBlob).catch((error) => {
+        setProblem(error instanceof Error ? error.message : "Could not save to Drive.");
+      });
+    });
+  }, []);
+
   async function onLinkSync() {
     try {
       const linked = await linkSyncFolder({ book: snapshot(), photos: book.photos });
@@ -237,6 +258,26 @@ export function Studio() {
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       complain(error instanceof Error ? error.message : "Could not link that folder.");
+    }
+  }
+
+  async function onDriveSave() {
+    try {
+      await saveBookToDrive(snapshot(), book.photos, getBlob);
+      driveOn.current = true;
+      setProblem("Saved to Google Drive.");
+    } catch (error) {
+      complain(error instanceof Error ? error.message : "Could not save to Drive.");
+    }
+  }
+
+  async function onDriveLoad() {
+    try {
+      const remote = await loadBookFromDrive();
+      driveOn.current = true;
+      await book.loadProject(remote.book, remote.photos);
+    } catch (error) {
+      complain(error instanceof Error ? error.message : "Could not load from Drive.");
     }
   }
 
@@ -470,6 +511,9 @@ export function Studio() {
         onExport={openExport}
         onSync={() => void onLinkSync()}
         onLoadSync={() => void onLoadSync()}
+        onDriveConnect={() => void connectDrive()}
+        onDriveSave={() => void onDriveSave()}
+        onDriveLoad={() => void onDriveLoad()}
         syncName={syncName}
         canSync={syncSupported()}
         onAddPage={book.addPage}

@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiDriveCallbackRouteImport } from './routes/api/drive/callback'
+import { Route as ApiDriveStartRouteImport } from './routes/api/drive/start'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDriveCallbackRoute = ApiDriveCallbackRouteImport.update({
+  id: '/api/drive/callback',
+  path: '/api/drive/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDriveStartRoute = ApiDriveStartRouteImport.update({
+  id: '/api/drive/start',
+  path: '/api/drive/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/drive/callback': typeof ApiDriveCallbackRoute
+  '/api/drive/start': typeof ApiDriveStartRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/drive/callback': typeof ApiDriveCallbackRoute
+  '/api/drive/start': typeof ApiDriveStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/drive/callback': typeof ApiDriveCallbackRoute
+  '/api/drive/start': typeof ApiDriveStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/drive/callback' | '/api/drive/start'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/drive/callback' | '/api/drive/start'
+  id: '__root__' | '/' | '/api/drive/callback' | '/api/drive/start'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiDriveCallbackRoute: typeof ApiDriveCallbackRoute
+  ApiDriveStartRoute: typeof ApiDriveStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/drive/callback': {
+      id: '/api/drive/callback'
+      path: '/api/drive/callback'
+      fullPath: '/api/drive/callback'
+      preLoaderRoute: typeof ApiDriveCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drive/start': {
+      id: '/api/drive/start'
+      path: '/api/drive/start'
+      fullPath: '/api/drive/start'
+      preLoaderRoute: typeof ApiDriveStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiDriveCallbackRoute: ApiDriveCallbackRoute,
+  ApiDriveStartRoute: ApiDriveStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
