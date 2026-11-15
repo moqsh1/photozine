@@ -376,6 +376,26 @@ function takeGroup(
   return { ids: [id], layout: isLandscape(id) ? "half" : "one" };
 }
 
+function pickOneLandscape(carried: Slot[], layout: LayoutId, isLandscape: (id: string) => boolean): { head: Slot[]; rest: Slot[] } {
+  let landscape: Slot | null = null;
+  const portraits: Slot[] = [];
+  const rest: Slot[] = [];
+  for (const slot of carried) {
+    if (!slot.photoId) continue;
+    if (isLandscape(slot.photoId)) {
+      if (!landscape) landscape = slot;
+      else rest.push(slot);
+    } else if (portraits.length < 2) portraits.push(slot);
+    else rest.push(slot);
+  }
+  const blank = emptySlot();
+  const top = landscape ?? blank;
+  const left = portraits[0] ?? blank;
+  const right = portraits[1] ?? blank;
+  const head = layout === "three-base" ? [left, right, top] : [top, left, right];
+  return { head, rest };
+}
+
 function selectedFrame(state: { pages: Page[]; activePageId: string | null; selectedSlot: number | null }): Slot | null {
   const page = state.pages.find((item) => item.id === state.activePageId);
   if (!page || state.selectedSlot == null) return null;
@@ -849,6 +869,15 @@ export const useBook = create<BookState>((set, get) => {
         const overflow = here.flatMap((slot, slotIndex) => (slot.photoId && slotIndex !== keepAt ? [{ ...slot }] : []));
         headSlots = [kept ?? emptySlot()];
         rest = [...overflow, ...later];
+      } else if (layout === "three-banner" || layout === "three-base") {
+        const carried = [
+          ...current[index].slots.flatMap((slot) => (slot.photoId ? [{ ...slot }] : [])),
+          ...later,
+        ];
+        const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+        const picked = pickOneLandscape(carried, layout, (photoId) => shape.get(photoId) === true);
+        headSlots = picked.head;
+        rest = picked.rest;
       } else {
         const carried = [
           ...current[index].slots.flatMap((slot) => (slot.photoId ? [{ ...slot }] : [])),
