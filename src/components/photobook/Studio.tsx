@@ -446,6 +446,7 @@ export function Studio() {
       onDeleteMany={(ids) => {
         void book.deletePhotos(ids);
       }}
+      onArrangeByDate={book.arrangeByDate}
       onReorder={book.reorderPhotos}
       onCaption={book.captionPhotos}
       onDate={book.datePhotos}
@@ -656,6 +657,7 @@ export function Studio() {
               photoById={photoById}
               onSelect={book.selectPage}
               onReorder={book.movePageTo}
+              onAddPhoto={book.addPhotoToPage}
               onReorderPhotos={book.reorderPhotos}
               picking={pagePicking}
               pickedIds={pickedPages}

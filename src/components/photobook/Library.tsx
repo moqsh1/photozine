@@ -23,6 +23,7 @@ type LibraryProps = {
   onSamples: () => void;
   onDelete: (id: string) => void;
   onDeleteMany: (ids: string[]) => void;
+  onArrangeByDate: (ids: string[]) => void;
   onReorder: (fromId: string, toId: string) => void;
   onCaption: (ids: string[], caption: string) => void;
   onDate: (ids: string[], takenAt: number | null) => void;
@@ -50,6 +51,7 @@ export const Library = memo(function Library({
   onSamples,
   onDelete,
   onDeleteMany,
+  onArrangeByDate,
   onReorder,
   onCaption,
   onDate,
@@ -70,16 +72,17 @@ export const Library = memo(function Library({
   const [draft, setDraft] = useState("");
   const [dateDraft, setDateDraft] = useState("");
   const [dupes, setDupes] = useState<string[]>([]);
-  const [pageCopies, setPageCopies] = useState(0);
+  const [pageCopies, setPageCopies] = useState<{ id: string; page: number }[]>([]);
   const [checking, setChecking] = useState<string | null>(null);
   useEffect(() => {
     onSelection(picking ? picked : []);
   }, [onSelection, picking, picked]);
   const dupeSet = useMemo(() => new Set(dupes), [dupes]);
+  const copyPage = useMemo(() => new Map(pageCopies.map((item) => [item.id, item.page])), [pageCopies]);
   async function checkDuplicates() {
     setChecking("0%");
     setDupes([]);
-    setPageCopies(0);
+    setPageCopies([]);
     const items: { id: string; hash: string; placed: boolean; seq: number }[] = [];
     for (let index = 0; index < photos.length; index += 1) {
       const photo = photos[index];
@@ -95,8 +98,16 @@ export const Library = memo(function Library({
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     }
     const found = duplicateIds(items);
+    const pageNumber = new Map<string, number>();
+    pages.forEach((page, index) => {
+      for (const slot of page.slots) {
+        if (slot.photoId && !pageNumber.has(slot.photoId)) pageNumber.set(slot.photoId, index + 1);
+      }
+    });
     setDupes(found.loose);
-    setPageCopies(found.extraOnPages.length);
+    setPageCopies(
+      found.extraOnPages.map((id) => ({ id, page: pageNumber.get(id) ?? 0 })).filter((item) => item.page > 0),
+    );
     setChecking(null);
   }
   const ordered = useMemo(() => {
@@ -200,14 +211,22 @@ export const Library = memo(function Library({
           Remove {dupes.length > 0 ? dupes.length : ""}
         </button>
       </div>
+      <button
+        type="button"
+        className="btn btn-quiet mx-3 mt-1 w-[calc(100%-1.5rem)]"
+        disabled={checking != null || picked.filter((id) => !placed.has(id)).length === 0}
+        onClick={() => onArrangeByDate(picked.filter((id) => !placed.has(id)))}
+      >
+        Arrange selected by date
+      </button>
       {dupes.length > 0 && (
         <p className="mt-1 px-3 text-xs text-muted">
           {dupes.length} loose {dupes.length === 1 ? "copy" : "copies"} match a photo already kept. The one on the page stays.
         </p>
       )}
-      {pageCopies > 0 && (
+      {pageCopies.length > 0 && (
         <p className="mt-1 px-3 text-xs text-muted">
-          {pageCopies} extra {pageCopies === 1 ? "copy is" : "copies are"} already on a page. Those were left in place.
+          Extra copies are on page {pageCopies.map((item) => item.page).join(", ")}. Those stay on the page.
         </p>
       )}
       {picking && (
@@ -268,7 +287,7 @@ export const Library = memo(function Library({
         ) : visible.length === 0 ? (
           <p className="px-1 py-6 text-sm text-muted">Nothing matches.</p>
         ) : (
-          <ul className="grid grid-cols-2 gap-1">
+          <ul className="grid grid-cols-3 gap-1">
             {visible.map((photo) => (
               <li key={photo.id} className="thumb-cell" data-photo-id={photo.id}>
                 <button
@@ -335,6 +354,11 @@ export const Library = memo(function Library({
                   )}
                   {dupeSet.has(photo.id) && (
                     <span className="absolute top-1 right-1 rounded-sm bg-accent px-1 text-[10px] leading-4 text-page">Dup</span>
+                  )}
+                  {copyPage.has(photo.id) && (
+                    <span className="absolute top-1 right-1 rounded-sm bg-accent px-1 text-[10px] leading-4 text-page">
+                      Dup {copyPage.get(photo.id)}
+                    </span>
                   )}
                   {pageOf.has(photo.id) ? (
                     <span className="absolute right-1 bottom-1 rounded-sm bg-ink/80 px-1 text-[10px] leading-4 text-page">

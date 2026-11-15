@@ -15,6 +15,7 @@ type PageStripProps = {
   photoById: Map<string, Photo>;
   onSelect: (id: string) => void;
   onReorder: (fromId: string, toId: string) => void;
+  onAddPhoto: (pageId: string, photoId: string) => void;
   onReorderPhotos: (fromId: string, toId: string) => void;
   picking: boolean;
   pickedIds: string[];
@@ -30,6 +31,7 @@ export const PageStrip = memo(function PageStrip({
   photoById,
   onSelect,
   onReorder,
+  onAddPhoto,
   onReorderPhotos,
   picking,
   pickedIds,
@@ -57,7 +59,7 @@ export const PageStrip = memo(function PageStrip({
           Clear captions{pickedIds.length > 0 ? ` (${pickedIds.length})` : ""}
         </button>
       )}
-      <div ref={rootRef} className="scroll-thin grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-x-hidden overflow-y-auto px-3 py-3" aria-label="Pages">
+      <div ref={rootRef} className="scroll-thin grid min-h-0 flex-1 grid-cols-3 content-start gap-1.5 overflow-x-hidden overflow-y-auto px-2 py-2" aria-label="Pages">
       {pages.map((page, index) => {
         const areas = areasFor(page.layout, page.split, page.splitL, page.splitR, page.splitW);
         const active = page.id === activePageId;
@@ -76,16 +78,27 @@ export const PageStrip = memo(function PageStrip({
               event.dataTransfer.effectAllowed = "move";
             }}
             onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes(PAGE_MIME)) return;
+              const types = event.dataTransfer.types;
+              if (!types.includes(PAGE_MIME) && !types.includes(PHOTO_MIME)) return;
               event.preventDefault();
               event.stopPropagation();
               if (overPage !== page.id) setOverPage(page.id);
             }}
             onDragLeave={() => setOverPage((current) => (current === page.id ? null : current))}
             onDrop={(event) => {
-              const fromId = event.dataTransfer.getData(PAGE_MIME);
+              const fromPage = event.dataTransfer.getData(PAGE_MIME);
+              const photoId = event.dataTransfer.getData(PHOTO_MIME);
+              const slotRef = event.dataTransfer.getData(SLOT_MIME);
               setOverPage(null);
-              if (fromId) onReorder(fromId, page.id);
+              if (fromPage) {
+                event.preventDefault();
+                onReorder(fromPage, page.id);
+                return;
+              }
+              if (photoId && !slotRef) {
+                event.preventDefault();
+                onAddPhoto(page.id, photoId);
+              }
             }}
             onClick={() => (picking ? onTogglePick(page.id) : onSelect(page.id))}
             className={cn(
@@ -144,6 +157,7 @@ export const PageStrip = memo(function PageStrip({
                       photo
                         ? (event) => {
                             const movingPage = event.dataTransfer.getData(PAGE_MIME);
+                            const slotRef = event.dataTransfer.getData(SLOT_MIME);
                             if (movingPage) {
                               event.preventDefault();
                               event.stopPropagation();
@@ -155,6 +169,10 @@ export const PageStrip = memo(function PageStrip({
                             event.stopPropagation();
                             setOverPhoto(null);
                             const fromId = event.dataTransfer.getData(PHOTO_MIME);
+                            if (fromId && !slotRef) {
+                              onAddPhoto(page.id, fromId);
+                              return;
+                            }
                             if (fromId) onReorderPhotos(fromId, photo.id);
                           }
                         : undefined

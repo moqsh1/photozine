@@ -83,6 +83,8 @@ type BookState = {
   setPageLayout: (layout: LayoutId) => void;
   setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
+  addPhotoToPage: (pageId: string, photoId: string) => void;
+  arrangeByDate: (ids: string[]) => void;
   clearSlot: (pageId: string, index: number) => void;
   copySlot: () => void;
   cutSlot: () => void;
@@ -909,6 +911,89 @@ export const useBook = create<BookState>((set, get) => {
     });
     persistLater();
     void get().ensureFull(photoId);
+  },
+  addPhotoToPage: (pageId, photoId) => {
+    const photo = get().photos.find((item) => item.id === photoId);
+    if (!photo) return;
+    const cleared = get().pages.map((page) => ({
+      ...page,
+      slots: page.slots.map((slot) => (slot.photoId === photoId ? emptySlot() : slot)),
+    }));
+    const index = cleared.findIndex((page) => page.id === pageId);
+    if (index < 0) return;
+    const empty = cleared[index].slots.findIndex((slot) => !slot.photoId);
+    if (empty >= 0) {
+      const takenAt = photo.takenAt;
+      set({
+        pages: patchSlot(cleared, pageId, empty, (slot) => ({
+          ...slot,
+          photoId,
+          takenAt,
+          caption: captionForDate("", takenAt).slice(0, 140),
+          noCaption: false,
+          zoom: 1,
+          panX: 0,
+          panY: 0,
+        })),
+        activePageId: pageId,
+        selectedSlot: empty,
+      });
+      persistLater();
+      void get().ensureFull(photoId);
+      return;
+    }
+    const made = makePage(photo.w > photo.h ? "half" : "one");
+    made.slots[0] = {
+      ...made.slots[0],
+      photoId,
+      takenAt: photo.takenAt,
+      caption: captionForDate("", photo.takenAt).slice(0, 140),
+    };
+    const pages = cleared.slice();
+    pages.splice(index + 1, 0, made);
+    set({ pages, activePageId: made.id, selectedSlot: 0 });
+    persistLater();
+    void get().ensureFull(photoId);
+  },
+  arrangeByDate: (ids) => {
+    const known = new Set(get().photos.map((photo) => photo.id));
+    const placed: string[] = [];
+    for (const page of get().pages) {
+      for (const slot of page.slots) {
+        if (slot.photoId && !placed.includes(slot.photoId)) placed.push(slot.photoId);
+      }
+    }
+    const adding = ids.filter((id) => known.has(id) && !placed.includes(id));
+    if (adding.length === 0) return;
+    const taken = new Map(get().photos.map((photo) => [photo.id, photo.takenAt]));
+    const sequence = placed.slice();
+    for (const id of sortIdsByDate(adding, taken)) {
+      const at = taken.get(id) ?? null;
+      let atIndex = sequence.length;
+      if (at != null) {
+        const later = sequence.findIndex((existing) => {
+          const other = taken.get(existing) ?? null;
+          return other != null && other > at;
+        });
+        if (later >= 0) atIndex = later;
+      }
+      sequence.splice(atIndex, 0, id);
+    }
+    const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+    const fresh = new Set(adding);
+    const pages = pagesInDateOrder(get().pages, sequence, get().orientation === "landscape", (id) => shape.get(id) === true).map(
+      (page) => ({
+        ...page,
+        slots: page.slots.map((slot) => {
+          if (!slot.photoId || !fresh.has(slot.photoId)) return slot;
+          const takenAt = taken.get(slot.photoId) ?? null;
+          return { ...slot, takenAt, caption: captionForDate("", takenAt).slice(0, 140), noCaption: false };
+        }),
+      }),
+    );
+    const active = pages.find((page) => page.slots.some((slot) => slot.photoId && fresh.has(slot.photoId)));
+    set({ pages, activePageId: active?.id ?? get().activePageId, selectedSlot: 0 });
+    persistLater();
   },
   clearSlot: (pageId, index) => {
     set({ pages: patchSlot(get().pages, pageId, index, () => emptySlot()) });
