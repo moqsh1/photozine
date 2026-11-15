@@ -73,25 +73,25 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
     setSpot(String(props.pageIndex + 1));
   }, [props.pageIndex, props.page?.id]);
   return (
-    <div className="scroll-thin flex h-full min-h-0 flex-col overflow-y-auto">
-      <section className="px-4 pt-4 pb-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-serif text-xl">This page</h2>
-          <p className="text-sm text-muted tabular-nums">
+    <div className="pane-tight scroll-thin flex h-full min-h-0 flex-col overflow-y-auto text-[13px]">
+      <section className="px-3 pt-2 pb-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="font-serif text-lg">This page</h2>
+          <p className="text-xs text-muted tabular-nums">
             {props.pageIndex + 1} / {props.pageCount}
           </p>
         </div>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-0.5 text-xs text-muted">
           {size.w} × {size.h} in · {props.page ? LAYOUT_BY_ID[props.page.layout].slots : 0} frames
           {props.pageSelected ? " · Page selected" : ""}
         </p>
-        <button type="button" className={cn("btn mt-3 w-full", props.pageSelected ? "btn-ink" : "btn-quiet")} onClick={props.onSelectPage}>
+        <button type="button" className={cn("btn mt-1.5 w-full", props.pageSelected ? "btn-ink" : "btn-quiet")} onClick={props.onSelectPage}>
           Select page
         </button>
-        <button type="button" className="btn btn-quiet mt-2 w-full" onClick={props.onClearPageCaptions} disabled={!props.page}>
+        <button type="button" className="btn btn-quiet mt-1 w-full" onClick={props.onClearPageCaptions} disabled={!props.page}>
           Clear page captions
         </button>
-        <div className="mt-3 flex gap-1" role="group" aria-label="Page layout">
+        <div className="mt-1.5 flex gap-1" role="group" aria-label="Page layout">
           {LAYOUTS.filter((layout) => layout.id !== "three-feature" && layout.id !== "three-cols" && layout.id !== "half").map((layout) => {
             const active = props.page?.layout === layout.id;
             return (
@@ -102,7 +102,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
                 aria-label={layout.hint}
                 onClick={() => props.onLayout(layout.id)}
                 className={cn(
-                  "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-sm px-0.5 py-2",
+                  "flex min-h-8 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-sm px-0.5 py-1",
                   active ? "bg-ink text-page" : "bg-caption text-ink",
                 )}
               >
@@ -112,11 +112,11 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
             );
           })}
         </div>
-        <div className="mt-3 flex items-end gap-2">
+        <div className="mt-1.5 flex items-end gap-1">
           <label className="min-w-0 flex-1">
-            <span className="text-sm text-muted">Move this page to</span>
+            <span className="text-xs text-muted">Move this page to</span>
             <input
-              className="field mt-2"
+              className="field mt-1"
               type="number"
               inputMode="numeric"
               min={1}
@@ -134,7 +134,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
             Place
           </button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-1.5 grid grid-cols-2 gap-1">
           <IconButton label="Previous page" onClick={() => props.onMove(-1)} disabled={props.pageIndex <= 0}>
             <ChevronLeft className="size-4" />
           </IconButton>
@@ -142,18 +142,18 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
             <ChevronRight className="size-4" />
           </IconButton>
         </div>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onDuplicate}>
-            <Copy className="size-4" aria-hidden="true" />
+        <div className="mt-1 grid grid-cols-3 gap-1">
+          <button type="button" className="btn btn-quiet flex-col gap-0.5 px-1 text-[11px]" onClick={props.onDuplicate}>
+            <Copy className="size-3.5" aria-hidden="true" />
             Duplicate
           </button>
-          <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onAddPage}>
-            <Plus className="size-4" aria-hidden="true" />
+          <button type="button" className="btn btn-quiet flex-col gap-0.5 px-1 text-[11px]" onClick={props.onAddPage}>
+            <Plus className="size-3.5" aria-hidden="true" />
             Add page
           </button>
-          <button type="button" className="btn btn-quiet flex-col gap-1 px-1 text-xs" onClick={props.onDeletePage}>
-            <Trash2 className="size-4" aria-hidden="true" />
-            Remove
+          <button type="button" className="btn btn-quiet flex-col gap-0.5 px-1 text-[11px]" onClick={props.onDeletePage}>
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            Remove page
           </button>
         </div>
       </section>
@@ -502,7 +502,7 @@ function InchSlider({
         <span className="text-muted tabular-nums">{display}</span>
       </span>
       <Slider.Root
-        className="relative flex h-11 w-full touch-none items-center"
+        className="relative flex h-7 w-full touch-none items-center"
         min={min}
         max={max}
         step={step}
