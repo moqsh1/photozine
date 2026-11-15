@@ -152,9 +152,9 @@ body {
   display: block;
   max-width: 100%;
   overflow: visible;
-  font-size: 64cqh;
-  line-height: 1.45;
-  padding-top: 0.12em;
+  font-size: 62cqh;
+  line-height: 1;
+  padding-top: 0.22em;
   white-space: nowrap;
   text-overflow: clip;
 }

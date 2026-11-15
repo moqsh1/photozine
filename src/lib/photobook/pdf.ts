@@ -198,14 +198,14 @@ async function drawPage(
         ctx.beginPath();
         ctx.rect(x, y + imageH, w, captionH);
         ctx.clip();
-        const fontPx = captionH * (hindi ? 0.52 : 0.62);
+        const fontPx = captionH * (hindi ? 0.58 : 0.68);
         ctx.font = hindi
           ? `500 ${fontPx}px "Noto Sans Devanagari", sans-serif`
           : `italic 500 ${fontPx}px Fraunces, Georgia, serif`;
         ctx.fillStyle = INK;
         ctx.textAlign = "center";
-        ctx.textBaseline = "alphabetic";
-        ctx.fillText(caption, x + w / 2, y + imageH + captionH * (hindi ? 0.78 : 0.72));
+        ctx.textBaseline = "middle";
+        ctx.fillText(caption, x + w / 2, y + imageH + captionH * (hindi ? 0.58 : 0.52));
         ctx.restore();
       }
     }

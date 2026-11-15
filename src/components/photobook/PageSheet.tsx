@@ -411,13 +411,13 @@ function Frame({
         {interactive && photo ? (
           <button
             type="button"
-            className="flex h-full w-full items-end justify-center overflow-visible px-2 pb-[6%] text-center"
+            className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-center"
             onClick={() => onSelectSlot?.(index)}
           >
             <CaptionLines caption={shownCaption} dateLabel="" placeholder={shownCaption ? undefined : "Add a caption"} />
           </button>
         ) : (
-          <div className="flex h-full w-full items-end justify-center overflow-visible px-2 pb-[6%] text-center">
+          <div className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-center">
             <CaptionLines caption={shownCaption} dateLabel="" />
           </div>
         )}
