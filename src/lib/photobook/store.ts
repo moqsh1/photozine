@@ -103,6 +103,7 @@ type BookState = {
   applyAdjustToPhotos: (ids: string[], adjust: Adjust | undefined) => void;
   rotateSlot: (pageId: string, index: number) => void;
   deletePhoto: (id: string) => Promise<void>;
+  deletePhotos: (ids: string[]) => Promise<void>;
   clearPages: () => void;
   deleteAllPhotos: () => Promise<void>;
   loadProject: (book: Book, incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number; full?: boolean }[]) => Promise<void>;
@@ -1150,22 +1151,30 @@ export const useBook = create<BookState>((set, get) => {
     persistLater();
   },
   deletePhoto: async (id) => {
-    const photo = get().photos.find((item) => item.id === id);
-    if (photo) URL.revokeObjectURL(photo.thumbUrl);
-    const full = get().fullUrls[id];
-    if (full) URL.revokeObjectURL(full);
-    const { [id]: _removed, ...fullUrls } = get().fullUrls;
+    await get().deletePhotos([id]);
+  },
+  deletePhotos: async (ids) => {
+    const drop = new Set(ids.filter(Boolean));
+    if (drop.size === 0) return;
+    for (const id of drop) {
+      const photo = get().photos.find((item) => item.id === id);
+      if (photo) URL.revokeObjectURL(photo.thumbUrl);
+      const full = get().fullUrls[id];
+      if (full) URL.revokeObjectURL(full);
+    }
+    const fullUrls = { ...get().fullUrls };
+    for (const id of drop) delete fullUrls[id];
     set({
-      photos: get().photos.filter((item) => item.id !== id),
+      photos: get().photos.filter((item) => !drop.has(item.id)),
       fullUrls,
-      placingId: get().placingId === id ? null : get().placingId,
+      placingId: get().placingId && drop.has(get().placingId as string) ? null : get().placingId,
       pages: get().pages.map((page) => ({
         ...page,
-        slots: page.slots.map((slot) => (slot.photoId === id ? emptySlot() : slot)),
+        slots: page.slots.map((slot) => (slot.photoId && drop.has(slot.photoId) ? emptySlot() : slot)),
       })),
     });
     persistLater();
-    await deletePhotoRecord(id);
+    for (const id of drop) await deletePhotoRecord(id);
   },
   clearPages: () => {
     const page = makePage(defaultLayout(get().density));

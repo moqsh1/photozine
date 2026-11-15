@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { PHOTO_MIME } from "@/components/photobook/PageSheet";
+import { getBlob, getThumbBlob } from "@/lib/photobook/db";
+import { duplicateIds, imageHash } from "@/lib/photobook/dupes";
 import { stampToIso, isoToStamp } from "@/lib/photobook/date";
 import { MAX_PHOTOS, type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
@@ -20,6 +22,7 @@ type LibraryProps = {
   onAdd: () => void;
   onSamples: () => void;
   onDelete: (id: string) => void;
+  onDeleteMany: (ids: string[]) => void;
   onReorder: (fromId: string, toId: string) => void;
   onCaption: (ids: string[], caption: string) => void;
   onDate: (ids: string[], takenAt: number | null) => void;
@@ -46,6 +49,7 @@ export const Library = memo(function Library({
   onAdd,
   onSamples,
   onDelete,
+  onDeleteMany,
   onReorder,
   onCaption,
   onDate,
@@ -65,9 +69,36 @@ export const Library = memo(function Library({
   const [picked, setPicked] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [dateDraft, setDateDraft] = useState("");
+  const [dupes, setDupes] = useState<string[]>([]);
+  const [pageCopies, setPageCopies] = useState(0);
+  const [checking, setChecking] = useState<string | null>(null);
   useEffect(() => {
     onSelection(picking ? picked : []);
   }, [onSelection, picking, picked]);
+  const dupeSet = useMemo(() => new Set(dupes), [dupes]);
+  async function checkDuplicates() {
+    setChecking("0%");
+    setDupes([]);
+    setPageCopies(0);
+    const items: { id: string; hash: string; placed: boolean; seq: number }[] = [];
+    for (let index = 0; index < photos.length; index += 1) {
+      const photo = photos[index];
+      const blob = (await getThumbBlob(photo.id)) ?? (await getBlob(photo.id));
+      if (blob) {
+        try {
+          items.push({ id: photo.id, hash: await imageHash(blob), placed: placed.has(photo.id), seq: photo.seq });
+        } catch {
+          // Skip a photo that cannot be read.
+        }
+      }
+      if (index % 12 === 0) setChecking(`${Math.round((index / Math.max(1, photos.length)) * 100)}%`);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+    const found = duplicateIds(items);
+    setDupes(found.loose);
+    setPageCopies(found.extraOnPages.length);
+    setChecking(null);
+  }
   const ordered = useMemo(() => {
     const rank = new Map<string, number>();
     let cursor = 0;
@@ -153,6 +184,32 @@ export const Library = memo(function Library({
           Not on a page
         </FilterButton>
       </div>
+      <div className="mt-1 flex gap-1 px-3">
+        <button type="button" className="btn btn-quiet min-w-0 flex-1" onClick={() => void checkDuplicates()} disabled={busy || checking != null || photos.length < 2}>
+          {checking != null ? `Checking ${checking}` : "Check duplicates"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-quiet"
+          disabled={dupes.length === 0 || checking != null}
+          onClick={() => {
+            onDeleteMany(dupes.filter((id) => !placed.has(id)));
+            setDupes([]);
+          }}
+        >
+          Remove {dupes.length > 0 ? dupes.length : ""}
+        </button>
+      </div>
+      {dupes.length > 0 && (
+        <p className="mt-1 px-3 text-xs text-muted">
+          {dupes.length} loose {dupes.length === 1 ? "copy" : "copies"} match a photo already kept. The one on the page stays.
+        </p>
+      )}
+      {pageCopies > 0 && (
+        <p className="mt-1 px-3 text-xs text-muted">
+          {pageCopies} extra {pageCopies === 1 ? "copy is" : "copies are"} already on a page. Those were left in place.
+        </p>
+      )}
       {picking && (
         <div className="mt-3 px-4">
           <label className="block">
@@ -262,6 +319,8 @@ export const Library = memo(function Library({
                     "relative aspect-square w-full overflow-hidden bg-well",
                     picking && picked.includes(photo.id)
                       ? "ring-2 ring-accent"
+                      : dupeSet.has(photo.id)
+                        ? "ring-2 ring-accent"
                       : selectedId === photo.id || placingId === photo.id
                         ? "ring-2 ring-accent"
                         : "ring-1 ring-line",
@@ -273,6 +332,9 @@ export const Library = memo(function Library({
                   <img src={photo.thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                   {picking && picked.includes(photo.id) && (
                     <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-accent text-[10px] text-page">✓</span>
+                  )}
+                  {dupeSet.has(photo.id) && (
+                    <span className="absolute top-1 right-1 rounded-sm bg-accent px-1 text-[10px] leading-4 text-page">Dup</span>
                   )}
                   {pageOf.has(photo.id) ? (
                     <span className="absolute right-1 bottom-1 rounded-sm bg-ink/80 px-1 text-[10px] leading-4 text-page">

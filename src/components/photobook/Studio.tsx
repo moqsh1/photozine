@@ -443,6 +443,9 @@ export function Studio() {
       onDelete={(id) => {
         void book.deletePhoto(id);
       }}
+      onDeleteMany={(ids) => {
+        void book.deletePhotos(ids);
+      }}
       onReorder={book.reorderPhotos}
       onCaption={book.captionPhotos}
       onDate={book.datePhotos}
