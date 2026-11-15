@@ -151,9 +151,10 @@ body {
 .caption-copy {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  font-size: 72cqh;
-  line-height: 1.22;
+  overflow: visible;
+  font-size: 64cqh;
+  line-height: 1.45;
+  padding-top: 0.12em;
   white-space: nowrap;
   text-overflow: clip;
 }
@@ -179,7 +180,7 @@ body {
 .page-folio {
   right: 2.4%;
   bottom: 1.1%;
-  font-size: 2.4cqmin;
+  font-size: 1.44cqmin;
   line-height: 1;
 }
 

@@ -190,31 +190,6 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
             Delete
           </button>
         </div>
-        {props.hasPhoto && (
-          <div className="mt-4 border-t border-line pt-3">
-            <h3 className="font-serif text-lg">Adjust</h3>
-            <p className="mt-1 text-sm text-muted">Same controls as the iPhone Photos app.</p>
-            {ADJUST_FIELDS.map((field) => (
-              <InchSlider
-                key={field.key}
-                className="mt-2"
-                label={field.label}
-                display={String(Math.round(props.adjust[field.key]))}
-                min={field.min}
-                max={field.max}
-                step={1}
-                value={props.adjust[field.key]}
-                onChange={(value) => props.onAdjust({ [field.key]: value })}
-              />
-            ))}
-            <button type="button" className="btn btn-quiet mt-3 w-full" onClick={props.onResetAdjust}>
-              Reset adjustments
-            </button>
-            <button type="button" className="btn btn-ink mt-2 w-full" onClick={props.onApplyAdjust} disabled={props.selectedCount === 0}>
-              Apply to selected photos{props.selectedCount > 0 ? ` (${props.selectedCount})` : ""}
-            </button>
-          </div>
-        )}
         {props.hasPhoto ? (
           <>
             <label className="mt-3 block">
@@ -422,6 +397,32 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
           New pages added by hand use this count. Added photos pack as two landscapes, four portraits, or one landscape over two portraits. A photo that does not fit goes on the next page, full when it is a portrait and half when it is a landscape. Three portraits never share a page. Changing a page’s frame count keeps what fits and sends the spare photo on. The following pages pack again by those same rules.
         </p>
       </section>
+
+      {props.hasPhoto && (
+        <section className="border-t border-line px-4 py-4">
+          <h2 className="font-serif text-xl">Adjust</h2>
+          <p className="mt-1 text-sm text-muted">Same controls as the iPhone Photos app.</p>
+          {ADJUST_FIELDS.map((field) => (
+            <InchSlider
+              key={field.key}
+              className="mt-2"
+              label={field.label}
+              display={String(Math.round(props.adjust[field.key]))}
+              min={field.min}
+              max={field.max}
+              step={1}
+              value={props.adjust[field.key]}
+              onChange={(value) => props.onAdjust({ [field.key]: value })}
+            />
+          ))}
+          <button type="button" className="btn btn-quiet mt-3 w-full" onClick={props.onResetAdjust}>
+            Reset adjustments
+          </button>
+          <button type="button" className="btn btn-ink mt-2 w-full" onClick={props.onApplyAdjust} disabled={props.selectedCount === 0}>
+            Apply to selected photos{props.selectedCount > 0 ? ` (${props.selectedCount})` : ""}
+          </button>
+        </section>
+      )}
 
       <section className="mt-auto border-t border-line px-4 py-4">
         <button type="button" className="btn btn-quiet w-full" onClick={props.onClearPages}>

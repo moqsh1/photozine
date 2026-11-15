@@ -190,7 +190,8 @@ function Frame({
   const [live, setLive] = useState<{ panX: number; panY: number } | null>(null);
   const [over, setOver] = useState(false);
   const shownCaption = visibleCaption(slot.caption, slot.takenAt, Boolean(slot.yearOnly));
-  const captionFrac = Math.min(0.42, captionIn / rect.h);
+  const hindiCaption = /[\u0900-\u097F]/.test(shownCaption);
+  const captionFrac = Math.min(0.48, (captionIn * (hindiCaption ? 1.28 : 1)) / rect.h);
   const imageH = rect.h * (1 - captionFrac);
   const frameAspect = rect.w / Math.max(0.05, imageH);
   const pan = live ?? { panX: slot.panX, panY: slot.panY };
@@ -410,13 +411,13 @@ function Frame({
         {interactive && photo ? (
           <button
             type="button"
-            className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-center"
+            className="flex h-full w-full items-end justify-center overflow-visible px-2 pb-[6%] text-center"
             onClick={() => onSelectSlot?.(index)}
           >
             <CaptionLines caption={shownCaption} dateLabel="" placeholder={shownCaption ? undefined : "Add a caption"} />
           </button>
         ) : (
-          <div className="flex h-full w-full items-center justify-center overflow-hidden px-2 text-center">
+          <div className="flex h-full w-full items-end justify-center overflow-visible px-2 pb-[6%] text-center">
             <CaptionLines caption={shownCaption} dateLabel="" />
           </div>
         )}

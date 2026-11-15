@@ -147,7 +147,8 @@ async function drawPage(
       const w = rect.w * DPI;
       const h = rect.h * DPI;
       const line = visibleCaption(slot.caption, slot.takenAt, Boolean(slot.yearOnly));
-      const captionH = Math.min(h * 0.42, book.captionIn * DPI);
+      const hindi = isHindiDate(line) || /[\u0900-\u097F]/.test(line);
+      const captionH = Math.min(h * 0.48, book.captionIn * DPI * (hindi ? 1.28 : 1));
       const imageH = Math.max(1, h - captionH);
       ctx.fillStyle = WELL;
       ctx.fillRect(x, y, w, imageH);
@@ -192,20 +193,19 @@ async function drawPage(
       ctx.fillStyle = LINE;
       ctx.fillRect(x, y + imageH, w, Math.max(1, DPI * 0.01));
       const caption = line;
-      const hindi = isHindiDate(caption) || /[\u0900-\u097F]/.test(caption);
       if (caption) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(x, y + imageH, w, captionH);
         ctx.clip();
-        const fontPx = captionH * 0.7;
+        const fontPx = captionH * (hindi ? 0.52 : 0.62);
         ctx.font = hindi
           ? `500 ${fontPx}px "Noto Sans Devanagari", sans-serif`
           : `italic 500 ${fontPx}px Fraunces, Georgia, serif`;
         ctx.fillStyle = INK;
         ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(caption, x + w / 2, y + imageH + captionH / 2);
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(caption, x + w / 2, y + imageH + captionH * (hindi ? 0.78 : 0.72));
         ctx.restore();
       }
     }
@@ -214,7 +214,7 @@ async function drawPage(
   }
 
   const label = String(pageNumber);
-  const fontPx = Math.round(Math.min(width, height) * 0.024);
+  const fontPx = Math.round(Math.min(width, height) * 0.0144);
   ctx.font = `500 ${fontPx}px Fraunces, Georgia, serif`;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
