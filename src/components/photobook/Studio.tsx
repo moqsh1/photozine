@@ -63,6 +63,12 @@ export function Studio() {
   const onPhotoSelection = useCallback((ids: string[]) => setPickedPhotos(ids), []);
   const pdfBlob = useRef<Blob | null>(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
+  const [paneW, setPaneW] = useState<[number, number, number]>(readPaneWidths);
+  const paneWRef = useRef(paneW);
+  paneWRef.current = paneW;
+  useEffect(() => {
+    localStorage.setItem("pz-panes", JSON.stringify(paneW));
+  }, [paneW]);
   const openFiles = useCallback(() => {
     importTarget.current = null;
     fileRef.current?.click();
@@ -645,11 +651,18 @@ export function Studio() {
           <p className="font-serif text-2xl">Opening your book…</p>
         </main>
       ) : (
-        <div className="no-print flex min-h-0 min-w-0 flex-1 overflow-x-auto">
-          <aside className="flex h-full w-64 shrink-0 flex-col border-r border-line bg-surface">
+        <div className="no-print flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[0] }}>
             {library}
           </aside>
-          <aside className="flex h-full w-80 shrink-0 flex-col border-r border-line bg-surface">
+          <PaneHandle
+            label="Resize library"
+            min={180}
+            max={560}
+            get={() => paneWRef.current[0]}
+            set={(width) => setPaneW((current) => [width, current[1], current[2]])}
+          />
+          <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[1] }}>
             <PageStrip
               pages={book.pages}
               activePageId={page?.id ?? null}
@@ -673,7 +686,14 @@ export function Studio() {
               }}
             />
           </aside>
-          <section className="relative flex h-full min-w-72 flex-1 flex-col">
+          <PaneHandle
+            label="Resize pages"
+            min={220}
+            max={720}
+            get={() => paneWRef.current[1]}
+            set={(width) => setPaneW((current) => [current[0], width, current[2]])}
+          />
+          <section className="relative flex h-full min-w-48 flex-1 flex-col">
             <div
               ref={stageRef}
               className="relative min-h-0 flex-1"
@@ -734,7 +754,15 @@ export function Studio() {
               </button>
             </div>
           </section>
-          <aside className="relative flex h-full w-72 shrink-0 flex-col border-l border-line bg-surface">
+          <PaneHandle
+            label="Resize preview"
+            min={220}
+            max={560}
+            sign={-1}
+            get={() => paneWRef.current[2]}
+            set={(width) => setPaneW((current) => [current[0], current[1], width])}
+          />
+          <aside className="relative flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[2] }}>
             {inspector}
           </aside>
         </div>
@@ -920,6 +948,70 @@ export function Studio() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function readPaneWidths(): [number, number, number] {
+  if (typeof window === "undefined") return [256, 320, 288];
+  try {
+    const raw = JSON.parse(localStorage.getItem("pz-panes") || "");
+    if (Array.isArray(raw) && raw.length === 3 && raw.every((item) => typeof item === "number" && Number.isFinite(item))) {
+      return [clampPane(raw[0], 180, 560), clampPane(raw[1], 220, 720), clampPane(raw[2], 220, 560)];
+    }
+  } catch {
+    // Keep the default widths.
+  }
+  return [256, 320, 288];
+}
+
+function clampPane(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function PaneHandle({
+  label,
+  min,
+  max,
+  sign = 1,
+  get,
+  set,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  sign?: number;
+  get: () => number;
+  set: (width: number) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      title={label}
+      className="group relative z-20 w-2 shrink-0 cursor-col-resize touch-none"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const origin = get();
+        const startX = event.clientX;
+        const handle = event.currentTarget;
+        handle.setPointerCapture(event.pointerId);
+        const move = (pointer: PointerEvent) => {
+          set(clampPane(origin + sign * (pointer.clientX - startX), min, max));
+        };
+        const end = () => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", end);
+          handle.removeEventListener("pointercancel", end);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", end);
+        handle.addEventListener("pointercancel", end);
+      }}
+    >
+      <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line group-hover:bg-accent" />
     </div>
   );
 }

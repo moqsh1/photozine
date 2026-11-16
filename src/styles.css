@@ -186,13 +186,12 @@ body {
 
 .caption-copy {
   display: block;
-  max-width: 100%;
-  overflow: visible;
+  width: 100%;
+  overflow: hidden;
   font-size: 62cqh;
   line-height: 1;
-  padding-top: 0.22em;
   white-space: nowrap;
-  text-overflow: clip;
+  text-align: center;
 }
 
 .thumb-cell {

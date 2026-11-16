@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { adjustFilter, vignetteStrength } from "@/lib/photobook/adjust";
 import { imageBox, orientedSize, placedImageStyle } from "@/lib/photobook/crop";
@@ -436,10 +436,31 @@ function Frame({
 function CaptionLines({ caption, dateLabel, placeholder }: { caption: string; dateLabel: string; placeholder?: string }) {
   const text = [caption || placeholder || "", dateLabel].filter(Boolean).join(" ");
   const hindi = isHindiDate(text) || /[\u0900-\u097F]/.test(text);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      const band = el.parentElement;
+      if (!band || band.clientHeight < 2) return;
+      const max = Math.max(8, band.clientHeight * (hindi ? 0.56 : 0.68));
+      el.style.fontSize = `${max}px`;
+      const available = el.clientWidth;
+      const needed = el.scrollWidth;
+      const next = needed > available + 1 ? Math.max(4, (max * available) / needed) : max;
+      el.style.fontSize = `${next}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    if (el.parentElement) observer.observe(el.parentElement);
+    return () => observer.disconnect();
+  }, [text, hindi]);
   return (
     <span
+      ref={ref}
       className={cn("caption-copy", hindi ? "" : "font-serif italic", !caption && !dateLabel && "text-muted")}
-      style={hindi ? { fontFamily: '"Noto Sans Devanagari", sans-serif' } : undefined}
+      style={hindi ? { fontFamily: '"Noto Sans Devanagari", sans-serif', paddingTop: "0.16em" } : undefined}
     >
       {text}
     </span>

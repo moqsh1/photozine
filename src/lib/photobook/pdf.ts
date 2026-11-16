@@ -198,7 +198,12 @@ async function drawPage(
         ctx.beginPath();
         ctx.rect(x, y + imageH, w, captionH);
         ctx.clip();
-        const fontPx = captionH * (hindi ? 0.58 : 0.68);
+        let fontPx = captionH * (hindi ? 0.56 : 0.68);
+        const family = hindi ? `500 ${fontPx}px "Noto Sans Devanagari", sans-serif` : `italic 500 ${fontPx}px Fraunces, Georgia, serif`;
+        ctx.font = family;
+        const available = w * 0.94;
+        const measured = ctx.measureText(caption).width;
+        if (measured > available) fontPx = Math.max(8, fontPx * (available / measured));
         ctx.font = hindi
           ? `500 ${fontPx}px "Noto Sans Devanagari", sans-serif`
           : `italic 500 ${fontPx}px Fraunces, Georgia, serif`;
