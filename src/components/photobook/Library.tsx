@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { PHOTO_MIME } from "@/components/photobook/PageSheet";
 import { getBlob, getThumbBlob } from "@/lib/photobook/db";
 import { duplicateIds, imageHash } from "@/lib/photobook/dupes";
-import { stampToIso, isoToStamp, formatHindiMonth } from "@/lib/photobook/date";
+import { stampToIso, isoToStamp, formatHindiDate, formatHindiMonth } from "@/lib/photobook/date";
 import { MAX_PHOTOS, type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -376,19 +376,20 @@ export const Library = memo(function Library({
                   }}
                   className={cn(
                     "relative aspect-square w-full overflow-hidden bg-well",
-                    picking && picked.includes(photo.id)
-                      ? "ring-2 ring-accent"
-                      : dupeSet.has(photo.id)
-                        ? "ring-2 ring-accent"
-                      : selectedId === photo.id || placingId === photo.id
-                        ? "ring-2 ring-accent"
-                        : "ring-1 ring-line",
-                    overId === photo.id && "ring-2 ring-accent",
+                    "ring-1 ring-line",
                   )}
                   aria-pressed={picking ? picked.includes(photo.id) : selectedId === photo.id || placingId === photo.id}
                   aria-label={`Place ${photo.name}`}
                 >
                   <img src={photo.thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                  {(picking && picked.includes(photo.id)) || selectedId === photo.id || placingId === photo.id || overId === photo.id ? (
+                    <span className="pointer-events-none absolute inset-0 z-20 border-[3px] border-accent" />
+                  ) : null}
+                  {photo.takenAt != null && (
+                    <span className="absolute inset-x-0 bottom-0 z-10 truncate bg-ink/80 px-0.5 text-center text-[8px] leading-4 text-page">
+                      {formatHindiDate(photo.takenAt)}
+                    </span>
+                  )}
                   {picking && picked.includes(photo.id) && (
                     <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-accent text-[10px] text-page">✓</span>
                   )}
@@ -401,7 +402,7 @@ export const Library = memo(function Library({
                     </span>
                   )}
                   {pageOf.has(photo.id) ? (
-                    <span className="absolute right-1 bottom-1 rounded-sm bg-ink/80 px-1 text-[10px] leading-4 text-page">
+                    <span className="absolute top-1 left-1 z-30 rounded-sm bg-ink/80 px-1 text-[10px] leading-4 text-page">
                       {pageOf.get(photo.id)}
                     </span>
                   ) : null}
