@@ -17,6 +17,8 @@ type MenuBarProps = {
   onSync: () => void;
   onLoadSync: () => void;
   onDriveConnect: () => void;
+  onAddPhotos: () => void;
+  onSamples: () => void;
   status?: ReactNode;
   syncName: string | null;
   canSync: boolean;
@@ -122,6 +124,12 @@ export function MenuBar(props: MenuBarProps) {
 
   return (
     <div ref={barRef} className="no-print relative flex gap-1 border-b border-line bg-surface px-2" role="menubar">
+      <button type="button" className="min-h-11 px-3 text-sm text-ink disabled:text-muted" onClick={props.onSamples} disabled={props.busy}>
+        Sample
+      </button>
+      <button type="button" className="min-h-11 px-3 text-sm text-ink disabled:text-muted" onClick={props.onAddPhotos} disabled={props.busy}>
+        Add photos
+      </button>
       {menus.map((menu) => (
         <div key={menu.name} className="relative">
           <button

@@ -442,10 +442,6 @@ export function Studio() {
       onQuery={book.setQuery}
       onFilter={book.setFilter}
       onFocus={book.showPhoto}
-      onAdd={openFiles}
-      onSamples={() => {
-        void book.loadSamples();
-      }}
       onDelete={(id) => {
         void book.deletePhoto(id);
       }}
@@ -593,6 +589,10 @@ export function Studio() {
         onSync={() => void onLinkSync()}
         onLoadSync={() => void onLoadSync()}
         onDriveConnect={() => void connectDrive()}
+        onSamples={() => {
+          void book.loadSamples();
+        }}
+        onAddPhotos={openFiles}
         syncName={syncName}
         canSync={syncSupported()}
         status={

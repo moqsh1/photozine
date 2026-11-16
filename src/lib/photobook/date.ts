@@ -24,6 +24,11 @@ export function formatHindiDate(stamp: number): string {
   return `${day} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
+export function formatHindiMonth(stamp: number): string {
+  const date = new Date(stamp);
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
 export function formatYear(stamp: number): string {
   return String(new Date(stamp).getUTCFullYear());
 }

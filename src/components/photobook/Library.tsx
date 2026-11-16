@@ -1,9 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus } from "lucide-react";
 import { PHOTO_MIME } from "@/components/photobook/PageSheet";
 import { getBlob, getThumbBlob } from "@/lib/photobook/db";
 import { duplicateIds, imageHash } from "@/lib/photobook/dupes";
-import { stampToIso, isoToStamp } from "@/lib/photobook/date";
+import { stampToIso, isoToStamp, formatHindiMonth } from "@/lib/photobook/date";
 import { MAX_PHOTOS, type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -19,8 +18,6 @@ type LibraryProps = {
   onQuery: (value: string) => void;
   onFilter: (value: "all" | "loose") => void;
   onFocus: (id: string) => void;
-  onAdd: () => void;
-  onSamples: () => void;
   onDelete: (id: string) => void;
   onDeleteMany: (ids: string[]) => void;
   onArrangeByDate: (ids: string[]) => void;
@@ -47,8 +44,6 @@ export const Library = memo(function Library({
   busy,
   onFilter,
   onFocus,
-  onAdd,
-  onSamples,
   onDelete,
   onDeleteMany,
   onArrangeByDate,
@@ -130,6 +125,42 @@ export const Library = memo(function Library({
     if (needle && !photo.name.toLowerCase().includes(needle)) return false;
     return true;
   });
+  const groups = useMemo(() => {
+    const buckets = new Map<string, { label: string; sort: number; photos: Photo[] }>();
+    for (const photo of visible) {
+      const at = photo.takenAt;
+      const key = at == null ? "none" : `${new Date(at).getUTCFullYear()}-${new Date(at).getUTCMonth()}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          label: at == null ? "No date" : formatHindiMonth(at),
+          sort: at == null ? Number.POSITIVE_INFINITY : Date.UTC(new Date(at).getUTCFullYear(), new Date(at).getUTCMonth(), 1),
+          photos: [],
+        };
+        buckets.set(key, bucket);
+      }
+      bucket.photos.push(photo);
+    }
+    return [...buckets.values()]
+      .sort((a, b) => a.sort - b.sort)
+      .map((bucket) => ({
+        ...bucket,
+        photos: bucket.photos.slice().sort((a, b) => (a.takenAt ?? 0) - (b.takenAt ?? 0) || a.seq - b.seq),
+      }));
+  }, [visible]);
+  const selectedCaption = useMemo(() => {
+    if (!selectedId) return "";
+    for (const page of pages) {
+      for (const slot of page.slots) {
+        if (slot.photoId === selectedId) return slot.caption;
+      }
+    }
+    return "";
+  }, [pages, selectedId]);
+  const [soloCaption, setSoloCaption] = useState("");
+  useEffect(() => {
+    setSoloCaption(selectedCaption);
+  }, [selectedId, selectedCaption]);
   const placing = photos.find((photo) => photo.id === placingId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -165,15 +196,23 @@ export const Library = memo(function Library({
         </div>
         <p className="pb-0.5 text-xs text-muted tabular-nums">{loose} loose</p>
       </div>
-      <div className="flex gap-1 px-3">
-        <button type="button" className="btn btn-primary min-w-0 flex-1" onClick={onAdd} disabled={busy || photos.length >= MAX_PHOTOS}>
-          <ImagePlus className="size-3.5" aria-hidden="true" />
-          Add photos
-        </button>
-        <button type="button" className="btn btn-quiet" onClick={onSamples} disabled={busy || photos.length >= MAX_PHOTOS}>
-          Sample
-        </button>
-      </div>
+      {selectedId && (
+        <label className="block px-3 pb-1">
+          <span className="text-xs text-muted">Caption</span>
+          <textarea
+            className="field mt-1 min-h-12 py-1 font-serif italic"
+            value={soloCaption}
+            maxLength={140}
+            rows={2}
+            placeholder="Caption for this photo"
+            onChange={(event) => {
+              const value = event.target.value;
+              setSoloCaption(value);
+              onCaption([selectedId], value);
+            }}
+          />
+        </label>
+      )}
       <button
         type="button"
         className={cn("btn mx-3 mt-1 w-[calc(100%-1.5rem)]", picking ? "btn-ink" : "btn-quiet")}
@@ -278,17 +317,18 @@ export const Library = memo(function Library({
           <div className="flex h-full min-h-48 flex-col items-center justify-center border border-dashed border-line px-4 py-8 text-center">
             <p className="font-serif text-lg">Drop in a whole set</p>
             <p className="mt-2 max-w-56 text-sm text-pretty text-muted">
-              Up to 1,000 photos. They flow onto 8×12 pages, one to four a page.
+              Up to 1,000 photos. Add them from the menu. They flow onto 8×12 pages, one to four a page.
             </p>
-            <button type="button" className="btn btn-primary mt-4" onClick={onSamples} disabled={busy}>
-              Open sample album
-            </button>
           </div>
         ) : visible.length === 0 ? (
           <p className="px-1 py-6 text-sm text-muted">Nothing matches.</p>
         ) : (
-          <ul className="grid grid-cols-3 gap-1">
-            {visible.map((photo) => (
+          <div className="grid gap-3">
+            {groups.map((group) => (
+              <section key={group.label}>
+                <h3 className="mb-1 font-serif text-sm text-ink">{group.label}</h3>
+                <ul className="grid grid-cols-3 gap-1">
+                  {group.photos.map((photo) => (
               <li key={photo.id} className="thumb-cell" data-photo-id={photo.id}>
                 <button
                   type="button"
@@ -367,8 +407,11 @@ export const Library = memo(function Library({
                   ) : null}
                 </button>
               </li>
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         )}
       </div>
       {placing && (
