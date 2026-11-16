@@ -3,7 +3,7 @@ import { PHOTO_MIME } from "@/components/photobook/PageSheet";
 import { getBlob, getThumbBlob } from "@/lib/photobook/db";
 import { duplicateIds, imageHash } from "@/lib/photobook/dupes";
 import { stampToIso, isoToStamp, formatHindiDate, formatHindiMonth } from "@/lib/photobook/date";
-import { MAX_PHOTOS, type Page, type Photo } from "@/lib/photobook/types";
+import { type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
 type LibraryProps = {
@@ -118,7 +118,19 @@ export const Library = memo(function Library({
       .sort((a, b) => a.rank - b.rank || a.photo.seq - b.photo.seq || a.index - b.index)
       .map((item) => item.photo);
   }, [photos, pages]);
-  const loose = ordered.filter((photo) => !placed.has(photo.id)).length;
+  const captionOf = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const page of pages) {
+      for (const slot of page.slots) {
+        if (!slot.photoId || map.has(slot.photoId)) continue;
+        const text = slot.caption.trim();
+        const date = slot.takenAt != null ? formatHindiDate(slot.takenAt) : "";
+        const year = slot.takenAt != null ? String(new Date(slot.takenAt).getUTCFullYear()) : "";
+        map.set(slot.photoId, text && text !== date && text !== year ? text : "");
+      }
+    }
+    return map;
+  }, [pages]);
   const needle = query.trim().toLowerCase();
   const visible = ordered.filter((photo) => {
     if (filter === "loose" && placed.has(photo.id)) return false;
@@ -186,16 +198,6 @@ export const Library = memo(function Library({
 
   return (
     <div className="pane-tight flex h-full min-h-0 flex-col">
-      <div className="flex items-end justify-between gap-2 px-3 pt-2 pb-1">
-        <div>
-          <p className="text-[10px] tracking-widest text-muted uppercase">Library</p>
-          <p className="font-serif text-base leading-tight">
-            <span className="tabular-nums">{photos.length}</span>
-            <span className="text-muted"> / {MAX_PHOTOS}</span>
-          </p>
-        </div>
-        <p className="pb-0.5 text-xs text-muted tabular-nums">{loose} loose</p>
-      </div>
       {selectedId && (
         <label className="block px-3 pb-1">
           <span className="text-xs text-muted">Caption</span>
@@ -390,6 +392,15 @@ export const Library = memo(function Library({
                       {formatHindiDate(photo.takenAt)}
                     </span>
                   )}
+                  <span
+                    className={cn(
+                      "absolute inset-x-0 z-10 truncate px-0.5 text-center text-[8px] leading-4",
+                      photo.takenAt != null ? "bottom-4" : "bottom-0",
+                      captionOf.get(photo.id) ? "bg-page/90 text-ink" : "bg-caption text-muted",
+                    )}
+                  >
+                    {captionOf.get(photo.id) || "No caption"}
+                  </span>
                   {picking && picked.includes(photo.id) && (
                     <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-accent text-[10px] text-page">✓</span>
                   )}

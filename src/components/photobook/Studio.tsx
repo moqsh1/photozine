@@ -15,7 +15,7 @@ import { renderBookPdf } from "@/lib/photobook/pdf";
 import { buildProjectFile, pdfFilename, projectFilename, readProjectFile } from "@/lib/photobook/project";
 import { linkSyncFolder, reloadSyncFolder, syncFolderName, syncSupported } from "@/lib/photobook/sync";
 import { onBookCloud, useBook } from "@/lib/photobook/store";
-import { PAGE_INCHES, type Book, type Page } from "@/lib/photobook/types";
+import { MAX_PHOTOS, PAGE_INCHES, type Book, type Page } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
 type ConfirmKind = "pages" | "photos" | "load" | null;
@@ -172,6 +172,7 @@ export function Studio() {
     .flatMap((page) => page.slots.map((slot) => slot.photoId ?? ""))
     .filter(Boolean)
     .join("|");
+  const looseCount = book.photos.filter((photo) => !placedSignature.split("|").includes(photo.id)).length;
   const page = book.pages.find((item) => item.id === book.activePageId) ?? book.pages[0] ?? null;
   const pageIndex = page ? Math.max(0, book.pages.findIndex((item) => item.id === page.id)) : 0;
   const inches = PAGE_INCHES[book.orientation];
@@ -519,9 +520,14 @@ export function Studio() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg text-ink">
       <header className="no-print flex items-center gap-3 border-b border-line bg-surface px-3 py-2 sm:px-4">
-        <div className="flex items-center gap-2 leading-none">
-          <img src="/icon-192.png" alt="" className="size-9 rounded-lg" />
-          <p className="font-serif text-xl tracking-tight">photozine</p>
+        <div className="flex flex-col leading-none">
+          <div className="flex items-center gap-2">
+            <img src="/icon-192.png" alt="" className="size-9 rounded-lg" />
+            <p className="font-serif text-xl tracking-tight">photozine</p>
+          </div>
+          <p className="mt-1 text-[11px] text-muted tabular-nums">
+            {book.photos.length} / {MAX_PHOTOS} photos · {Math.max(0, looseCount)} loose
+          </p>
         </div>
         <label className="min-w-0 flex-1">
           <span className="sr-only">Book title</span>
