@@ -218,6 +218,7 @@ body {
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
+  min-height: 120px;
 }
 
 .scroll-library::-webkit-scrollbar-track {

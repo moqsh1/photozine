@@ -54,10 +54,14 @@ export const Library = memo(function Library({
 }: LibraryProps) {
   const placed = usedIds(placedSignature);
   const pageOf = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, number[]>();
     pages.forEach((page, index) => {
       for (const slot of page.slots) {
-        if (slot.photoId && !map.has(slot.photoId)) map.set(slot.photoId, index + 1);
+        if (!slot.photoId) continue;
+        const list = map.get(slot.photoId) ?? [];
+        const number = index + 1;
+        if (!list.includes(number)) list.push(number);
+        map.set(slot.photoId, list);
       }
     });
     return map;
@@ -67,17 +71,24 @@ export const Library = memo(function Library({
   const [draft, setDraft] = useState("");
   const [dateDraft, setDateDraft] = useState("");
   const [dupes, setDupes] = useState<string[]>([]);
-  const [pageCopies, setPageCopies] = useState<{ id: string; page: number }[]>([]);
+  const [dupeReports, setDupeReports] = useState<{ times: number; pages: number[]; loose: number; ids: string[] }[]>([]);
   const [checking, setChecking] = useState<string | null>(null);
   useEffect(() => {
     onSelection(picking ? picked : []);
   }, [onSelection, picking, picked]);
-  const dupeSet = useMemo(() => new Set(dupes), [dupes]);
-  const copyPage = useMemo(() => new Map(pageCopies.map((item) => [item.id, item.page])), [pageCopies]);
+  const dupeNote = useMemo(() => {
+    const notes = new Map<string, string>();
+    for (const report of dupeReports) {
+      const where = report.pages.length > 0 ? report.pages.join(", ") : "not on a page";
+      const note = `${report.times}× ${where}`;
+      for (const id of report.ids) notes.set(id, note);
+    }
+    return notes;
+  }, [dupeReports]);
   async function checkDuplicates() {
     setChecking("0%");
     setDupes([]);
-    setPageCopies([]);
+    setDupeReports([]);
     const items: { id: string; hash: string; placed: boolean; seq: number }[] = [];
     for (let index = 0; index < photos.length; index += 1) {
       const photo = photos[index];
@@ -93,16 +104,38 @@ export const Library = memo(function Library({
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     }
     const found = duplicateIds(items);
-    const pageNumber = new Map<string, number>();
+    const pagesOf = new Map<string, number[]>();
     pages.forEach((page, index) => {
       for (const slot of page.slots) {
-        if (slot.photoId && !pageNumber.has(slot.photoId)) pageNumber.set(slot.photoId, index + 1);
+        if (!slot.photoId) continue;
+        const list = pagesOf.get(slot.photoId) ?? [];
+        const number = index + 1;
+        if (!list.includes(number)) list.push(number);
+        pagesOf.set(slot.photoId, list);
       }
     });
     setDupes(found.loose);
-    setPageCopies(
-      found.extraOnPages.map((id) => ({ id, page: pageNumber.get(id) ?? 0 })).filter((item) => item.page > 0),
-    );
+    const reports = found.groups.map((ids) => {
+      const pageHits: number[] = [];
+      let looseCount = 0;
+      for (const id of ids) {
+        const list = pagesOf.get(id) ?? [];
+        if (list.length === 0) looseCount += 1;
+        else pageHits.push(...list);
+      }
+      return {
+        ids,
+        times: pageHits.length + looseCount,
+        pages: [...new Set(pageHits)].sort((a, b) => a - b),
+        loose: looseCount,
+      };
+    });
+    for (const [id, list] of pagesOf) {
+      if (list.length < 2) continue;
+      if (reports.some((report) => report.ids.includes(id))) continue;
+      reports.push({ ids: [id], times: list.length, pages: [...list].sort((a, b) => a - b), loose: 0 });
+    }
+    setDupeReports(reports);
     setChecking(null);
   }
   const ordered = useMemo(() => {
@@ -260,15 +293,16 @@ export const Library = memo(function Library({
       >
         Arrange selected by date
       </button>
-      {dupes.length > 0 && (
-        <p className="mt-1 px-3 text-xs text-muted">
-          {dupes.length} loose {dupes.length === 1 ? "copy" : "copies"} match a photo already kept. The one on the page stays.
-        </p>
-      )}
-      {pageCopies.length > 0 && (
-        <p className="mt-1 px-3 text-xs text-muted">
-          Extra copies are on page {pageCopies.map((item) => item.page).join(", ")}. Those stay on the page.
-        </p>
+      {dupeReports.length > 0 && (
+        <ul className="mt-1 grid gap-1 px-3 text-xs text-muted">
+          {dupeReports.map((report) => (
+            <li key={report.ids.join("-")}>
+              Same photo, {report.times} times
+              {report.pages.length > 0 ? `: pages ${report.pages.join(", ")}` : ""}
+              {report.loose > 0 ? `${report.pages.length > 0 ? ", plus" : ":"} ${report.loose} not on a page` : ""}.
+            </li>
+          ))}
+        </ul>
       )}
       {picking && (
         <div className="mt-3 px-4">
@@ -404,17 +438,14 @@ export const Library = memo(function Library({
                   {picking && picked.includes(photo.id) && (
                     <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-accent text-[10px] text-page">✓</span>
                   )}
-                  {dupeSet.has(photo.id) && (
-                    <span className="absolute top-1 right-1 rounded-sm bg-accent px-1 text-[10px] leading-4 text-page">Dup</span>
-                  )}
-                  {copyPage.has(photo.id) && (
-                    <span className="absolute top-1 right-1 rounded-sm bg-accent px-1 text-[10px] leading-4 text-page">
-                      Dup {copyPage.get(photo.id)}
+                  {dupeNote.has(photo.id) && (
+                    <span className="absolute top-1 right-1 z-30 max-w-[90%] truncate rounded-sm bg-accent px-1 text-[10px] leading-4 text-page">
+                      {dupeNote.get(photo.id)}
                     </span>
                   )}
                   {pageOf.has(photo.id) ? (
                     <span className="absolute top-1 left-1 z-30 rounded-sm bg-ink/80 px-1 text-[10px] leading-4 text-page">
-                      {pageOf.get(photo.id)}
+                      {pageOf.get(photo.id)?.join(", ")}
                     </span>
                   ) : null}
                 </button>

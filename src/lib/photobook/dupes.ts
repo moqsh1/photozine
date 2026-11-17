@@ -34,7 +34,7 @@ function hamming(a: string, b: string): number {
 
 export type DupeItem = { id: string; hash: string; placed: boolean; seq: number };
 
-export function duplicateIds(items: DupeItem[], maxDistance = 4): { loose: string[]; extraOnPages: string[] } {
+export function duplicateIds(items: DupeItem[], maxDistance = 4): { loose: string[]; groups: string[][] } {
   const parent = items.map((_, index) => index);
   const find = (index: number): number => (parent[index] === index ? index : (parent[index] = find(parent[index])));
   const join = (a: number, b: number) => {
@@ -47,19 +47,19 @@ export function duplicateIds(items: DupeItem[], maxDistance = 4): { loose: strin
       if (hamming(items[i].hash, items[j].hash) <= maxDistance) join(i, j);
     }
   }
-  const groups = new Map<number, DupeItem[]>();
+  const grouped = new Map<number, DupeItem[]>();
   items.forEach((item, index) => {
     const key = find(index);
-    const list = groups.get(key);
+    const list = grouped.get(key);
     if (list) list.push(item);
-    else groups.set(key, [item]);
+    else grouped.set(key, [item]);
   });
   const loose: string[] = [];
-  const extraOnPages: string[] = [];
-  for (const group of groups.values()) {
+  const groups: string[][] = [];
+  for (const group of grouped.values()) {
     if (group.length < 2) continue;
+    groups.push(group.map((item) => item.id));
     const placed = group.filter((item) => item.placed).sort((a, b) => a.seq - b.seq);
-    if (placed.length > 1) extraOnPages.push(...placed.slice(1).map((item) => item.id));
     const keep = new Set(placed.map((item) => item.id));
     if (keep.size === 0) {
       const first = group.slice().sort((a, b) => a.seq - b.seq)[0];
@@ -67,5 +67,5 @@ export function duplicateIds(items: DupeItem[], maxDistance = 4): { loose: strin
     }
     for (const item of group) if (!keep.has(item.id)) loose.push(item.id);
   }
-  return { loose, extraOnPages };
+  return { loose, groups };
 }
