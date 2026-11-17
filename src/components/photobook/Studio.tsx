@@ -658,13 +658,13 @@ export function Studio() {
         </main>
       ) : (
         <div className="no-print flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[0] }}>
+          <aside className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden bg-surface" style={{ width: paneW[0] }}>
             {library}
           </aside>
           <PaneHandle
             label="Resize library"
             min={180}
-            max={560}
+            max={840}
             get={() => paneWRef.current[0]}
             set={(width) => setPaneW((current) => [width, current[1], current[2]])}
           />
@@ -965,7 +965,7 @@ function readPaneWidths(): [number, number, number] {
   try {
     const raw = JSON.parse(localStorage.getItem("pz-panes") || "");
     if (Array.isArray(raw) && raw.length === 3 && raw.every((item) => typeof item === "number" && Number.isFinite(item))) {
-      return [clampPane(raw[0], 180, 560), clampPane(raw[1], 220, 720), clampPane(raw[2], 220, 560)];
+      return [clampPane(raw[0], 180, 840), clampPane(raw[1], 220, 720), clampPane(raw[2], 220, 560)];
     }
   } catch {
     // Keep the default widths.
@@ -998,28 +998,31 @@ function PaneHandle({
       aria-orientation="vertical"
       aria-label={label}
       title={label}
-      className="group relative z-20 w-2 shrink-0 cursor-col-resize touch-none"
+      className="group relative z-30 w-4 shrink-0 cursor-col-resize touch-none"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
+        event.stopPropagation();
         const origin = get();
         const startX = event.clientX;
-        const handle = event.currentTarget;
-        handle.setPointerCapture(event.pointerId);
+        const previous = document.body.style.userSelect;
+        document.body.style.userSelect = "none";
         const move = (pointer: PointerEvent) => {
+          pointer.preventDefault();
           set(clampPane(origin + sign * (pointer.clientX - startX), min, max));
         };
         const end = () => {
-          handle.removeEventListener("pointermove", move);
-          handle.removeEventListener("pointerup", end);
-          handle.removeEventListener("pointercancel", end);
+          document.body.style.userSelect = previous;
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", end);
+          window.removeEventListener("pointercancel", end);
         };
-        handle.addEventListener("pointermove", move);
-        handle.addEventListener("pointerup", end);
-        handle.addEventListener("pointercancel", end);
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
       }}
     >
-      <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-line group-hover:bg-accent" />
+      <span className="absolute inset-y-0 left-1/2 w-1.5 -translate-x-1/2 rounded-full bg-line group-hover:bg-accent group-active:bg-accent" />
     </div>
   );
 }
