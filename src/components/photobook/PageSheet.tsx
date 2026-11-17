@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Lock, LockOpen } from "lucide-react";
 import { adjustFilter, vignetteStrength } from "@/lib/photobook/adjust";
 import { imageBox, orientedSize, placedImageStyle } from "@/lib/photobook/crop";
 import { isHindiDate, visibleCaption } from "@/lib/photobook/date";
@@ -29,6 +29,7 @@ type PageSheetProps = {
   onDropPhoto?: (index: number, photoId: string) => void;
   onSwap?: (index: number, fromPageId: string, fromIndex: number) => void;
   onImport?: (index: number) => void;
+  onToggleLock?: () => void;
 };
 
 export function PageSheet({
@@ -50,6 +51,7 @@ export function PageSheet({
   onDropPhoto,
   onSwap,
   onImport,
+  onToggleLock,
 }: PageSheetProps) {
   const inches = PAGE_INCHES[orientation];
   const [hot, setHot] = useState<number | null>(null);
@@ -106,6 +108,20 @@ export function PageSheet({
           : undefined
       }
     >
+      {interactive && (
+        <button
+          type="button"
+          className="absolute top-2 left-2 z-50 flex size-9 items-center justify-center rounded-full bg-page/95 text-ink shadow-sm ring-1 ring-line"
+          aria-label={page.locked ? "Unlock page" : "Lock page"}
+          aria-pressed={page.locked === true}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleLock?.();
+          }}
+        >
+          {page.locked ? <Lock className="size-4" /> : <LockOpen className="size-4" />}
+        </button>
+      )}
       {rects.map((rect, index) => {
         const slot = page.slots[index];
         if (!slot) return null;

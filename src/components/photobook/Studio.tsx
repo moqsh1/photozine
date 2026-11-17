@@ -677,6 +677,7 @@ export function Studio() {
               onSelect={book.selectPage}
               onReorder={book.movePageTo}
               onAddPhoto={book.addPhotoToPage}
+              onToggleLock={book.togglePageLock}
               onReorderPhotos={book.reorderPhotos}
               picking={pagePicking}
               pickedIds={pickedPages}
@@ -734,6 +735,7 @@ export function Studio() {
                       importTarget.current = { pageId: page.id, index };
                       fileRef.current?.click();
                     }}
+                    onToggleLock={() => book.togglePageLock(page.id)}
                   />
                 </div>
               )}

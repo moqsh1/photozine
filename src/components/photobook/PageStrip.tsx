@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Lock, LockOpen } from "lucide-react";
 import { adjustFilter } from "@/lib/photobook/adjust";
 import { PHOTO_MIME, SLOT_MIME } from "@/components/photobook/PageSheet";
 import { areasFor } from "@/lib/photobook/layouts";
@@ -16,6 +16,7 @@ type PageStripProps = {
   onSelect: (id: string) => void;
   onReorder: (fromId: string, toId: string) => void;
   onAddPhoto: (pageId: string, photoId: string) => void;
+  onToggleLock: (pageId: string) => void;
   onReorderPhotos: (fromId: string, toId: string) => void;
   picking: boolean;
   pickedIds: string[];
@@ -32,6 +33,7 @@ export const PageStrip = memo(function PageStrip({
   onSelect,
   onReorder,
   onAddPhoto,
+  onToggleLock,
   onReorderPhotos,
   picking,
   pickedIds,
@@ -204,6 +206,24 @@ export const PageStrip = memo(function PageStrip({
                   </span>
                 );
               })}
+              <span
+                role="button"
+                tabIndex={0}
+                className="absolute top-1 left-1 z-10 flex size-6 items-center justify-center rounded-full bg-page/95 text-ink ring-1 ring-line"
+                aria-label={page.locked ? "Unlock page" : "Lock page"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleLock(page.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onToggleLock(page.id);
+                }}
+              >
+                {page.locked ? <Lock className="size-3" /> : <LockOpen className="size-3" />}
+              </span>
             </div>
             <span className="mt-1 flex cursor-grab items-center justify-center gap-1 text-xs text-muted tabular-nums active:cursor-grabbing">
               <GripVertical className="size-3.5" aria-hidden="true" />

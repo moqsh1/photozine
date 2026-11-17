@@ -34,6 +34,7 @@ export type Page = {
   splitL?: number | null;
   splitR?: number | null;
   splitW?: number | null;
+  locked?: boolean;
 };
 
 export type Book = {

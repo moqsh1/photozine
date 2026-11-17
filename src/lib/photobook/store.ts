@@ -81,6 +81,7 @@ type BookState = {
   movePageTo: (fromId: string, toId: string) => void;
   placePageAt: (pageNumber: number) => void;
   setPageLayout: (layout: LayoutId) => void;
+  togglePageLock: (pageId?: string) => void;
   setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
   addPhotoToPage: (pageId: string, photoId: string) => void;
@@ -177,6 +178,31 @@ function sanitizeBook(raw: Book | null): Book {
 
 function bookIsEmpty(pages: Page[]) {
   return pages.every((page) => page.slots.every((slot) => !slot.photoId));
+}
+
+function pageIsLocked(pages: Page[], id: string | null | undefined) {
+  return Boolean(id && pages.some((page) => page.id === id && page.locked));
+}
+
+function heldPhotoIds(pages: Page[]) {
+  const ids = new Set<string>();
+  for (const page of pages) {
+    if (!page.locked) continue;
+    for (const slot of page.slots) if (slot.photoId) ids.add(slot.photoId);
+  }
+  return ids;
+}
+
+function mergeLocked(existing: Page[], flowing: Page[]): Page[] {
+  if (!existing.some((page) => page.locked)) return flowing;
+  const out: Page[] = [];
+  let cursor = 0;
+  for (const page of existing) {
+    if (page.locked) out.push(page);
+    else if (cursor < flowing.length) out.push(flowing[cursor++]);
+  }
+  while (cursor < flowing.length) out.push(flowing[cursor++]);
+  return out.length > 0 ? out : existing.filter((page) => page.locked);
 }
 
 let cloudTimer = 0;
@@ -653,7 +679,7 @@ export const useBook = create<BookState>((set, get) => {
     const takenOf = new Map(get().photos.map((photo) => [photo.id, photo.takenAt]));
     const ordered = sortIdsByDate(ids, takenOf);
     const target =
-      into && get().pages.some((page) => page.id === into.pageId && page.slots[into.index]) ? into : null;
+      into && get().pages.some((page) => page.id === into.pageId && page.slots[into.index] && !page.locked) ? into : null;
     let pages: Page[];
     let replaceEmpty = false;
     if (target && ordered[0]) {
@@ -690,10 +716,14 @@ export const useBook = create<BookState>((set, get) => {
           }
         }
       }
-      const sequence = sortIdsByDate([...placed, ...ordered], takenOf);
+      const held = heldPhotoIds(get().pages);
+      const sequence = sortIdsByDate([...placed, ...ordered].filter((id) => !held.has(id)), takenOf);
       const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
       replaceEmpty = bookIsEmpty(get().pages);
-      pages = pagesInDateOrder(get().pages, sequence, get().orientation === "landscape", (id) => shape.get(id) === true);
+      pages = mergeLocked(
+        get().pages,
+        pagesInDateOrder(get().pages, sequence, get().orientation === "landscape", (id) => shape.get(id) === true),
+      );
     }
     const captioned = captions
       ? pages.map((page) => ({
@@ -781,13 +811,17 @@ export const useBook = create<BookState>((set, get) => {
     persistLater();
   },
   deletePage: () => {
+    const id = get().activePageId;
+    if (pageIsLocked(get().pages, id)) {
+      flash("This page is locked.");
+      return;
+    }
     if (get().pages.length <= 1) {
       const page = makePage(defaultLayout(get().density));
       set({ pages: [page], activePageId: page.id, selectedSlot: null });
       persistLater();
       return;
     }
-    const id = get().activePageId;
     const index = get().pages.findIndex((page) => page.id === id);
     const pages = get().pages.filter((page) => page.id !== id);
     const next = pages[Math.max(0, index - 1)] ?? pages[0];
@@ -836,6 +870,10 @@ export const useBook = create<BookState>((set, get) => {
   setPageLayout: (layout) => {
     const id = get().activePageId;
     if (!id) return;
+    if (pageIsLocked(get().pages, id)) {
+      flash("This page is locked.");
+      return;
+    }
     const current = get().pages;
     const index = current.findIndex((page) => page.id === id);
     if (index < 0) return;
@@ -854,8 +892,10 @@ export const useBook = create<BookState>((set, get) => {
       if (flipped && selected != null) set({ selectedSlot: order.indexOf(selected) });
     } else {
       const later: Slot[] = [];
-      for (let cursor = index + 1; cursor < current.length; cursor += 1) {
-        for (const slot of current[cursor].slots) {
+      const after = current.slice(index + 1);
+      for (const page of after) {
+        if (page.locked) continue;
+        for (const slot of page.slots) {
           if (slot.photoId) later.push({ ...slot });
         }
       }
@@ -902,7 +942,7 @@ export const useBook = create<BookState>((set, get) => {
         });
         return page;
       });
-      pages = [...current.slice(0, index), head, ...tail];
+      pages = [...current.slice(0, index), head, ...mergeLocked(after, tail)];
     }
     const page = pages.find((item) => item.id === id);
     const selected = get().selectedSlot;
@@ -912,9 +952,22 @@ export const useBook = create<BookState>((set, get) => {
     });
     persistLater();
   },
+  togglePageLock: (pageId) => {
+    const id = pageId || get().activePageId;
+    if (!id) return;
+    set({
+      pages: get().pages.map((page) => (page.id === id ? { ...page, locked: !page.locked } : page)),
+      activePageId: id,
+    });
+    persistLater();
+  },
   setPageSplit: (split, part = "top") => {
     const id = get().activePageId;
     if (!id) return;
+    if (pageIsLocked(get().pages, id)) {
+      flash("This page is locked.");
+      return;
+    }
     const key = part === "left" ? "splitL" : part === "right" ? "splitR" : part === "width" ? "splitW" : "split";
     const band = key === "split" || key === "splitW";
     const next = split == null || !Number.isFinite(split) ? null : clamp(split, band ? 0.18 : 0.2, band ? 0.82 : 1);
@@ -924,6 +977,10 @@ export const useBook = create<BookState>((set, get) => {
     persistLater();
   },
   assignPhoto: (pageId, index, photoId) => {
+    if (pageIsLocked(get().pages, pageId) || heldPhotoIds(get().pages).has(photoId)) {
+      flash("This page is locked.");
+      return;
+    }
     const takenAt = get().photos.find((photo) => photo.id === photoId)?.takenAt ?? null;
     set({
       pages: patchSlot(get().pages, pageId, index, (slot) => ({
@@ -944,6 +1001,10 @@ export const useBook = create<BookState>((set, get) => {
   addPhotoToPage: (pageId, photoId) => {
     const photo = get().photos.find((item) => item.id === photoId);
     if (!photo) return;
+    if (pageIsLocked(get().pages, pageId) || heldPhotoIds(get().pages).has(photoId)) {
+      flash("This page is locked.");
+      return;
+    }
     const cleared = get().pages.map((page) => ({
       ...page,
       slots: page.slots.map((slot) => (slot.photoId === photoId ? emptySlot() : slot)),
@@ -986,10 +1047,12 @@ export const useBook = create<BookState>((set, get) => {
   },
   arrangeByDate: (ids) => {
     const known = new Set(get().photos.map((photo) => photo.id));
+    const held = heldPhotoIds(get().pages);
     const placed: string[] = [];
     for (const page of get().pages) {
+      if (page.locked) continue;
       for (const slot of page.slots) {
-        if (slot.photoId && !placed.includes(slot.photoId)) placed.push(slot.photoId);
+        if (slot.photoId && !placed.includes(slot.photoId) && !held.has(slot.photoId)) placed.push(slot.photoId);
       }
     }
     const adding = ids.filter((id) => known.has(id) && !placed.includes(id));
@@ -1010,7 +1073,9 @@ export const useBook = create<BookState>((set, get) => {
     }
     const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
     const fresh = new Set(adding);
-    const pages = pagesInDateOrder(get().pages, sequence, get().orientation === "landscape", (id) => shape.get(id) === true).map(
+    const pages = mergeLocked(
+      get().pages,
+      pagesInDateOrder(get().pages, sequence, get().orientation === "landscape", (id) => shape.get(id) === true).map(
       (page) => ({
         ...page,
         slots: page.slots.map((slot) => {
@@ -1019,12 +1084,17 @@ export const useBook = create<BookState>((set, get) => {
           return { ...slot, takenAt, caption: captionForDate("", takenAt).slice(0, 140), noCaption: false };
         }),
       }),
+    ),
     );
     const active = pages.find((page) => page.slots.some((slot) => slot.photoId && fresh.has(slot.photoId)));
     set({ pages, activePageId: active?.id ?? get().activePageId, selectedSlot: 0 });
     persistLater();
   },
   clearSlot: (pageId, index) => {
+    if (pageIsLocked(get().pages, pageId)) {
+      flash("This page is locked.");
+      return;
+    }
     set({ pages: patchSlot(get().pages, pageId, index, () => emptySlot()) });
     persistLater();
   },
@@ -1038,6 +1108,10 @@ export const useBook = create<BookState>((set, get) => {
     const index = get().selectedSlot;
     const slot = selectedFrame(get());
     if (!pageId || index == null || !slot?.photoId) return;
+    if (pageIsLocked(get().pages, pageId)) {
+      flash("This page is locked.");
+      return;
+    }
     set({
       clipboard: { ...slot },
       pages: patchSlot(get().pages, pageId, index, () => emptySlot()),
@@ -1049,6 +1123,10 @@ export const useBook = create<BookState>((set, get) => {
     const pageId = get().activePageId;
     const index = get().selectedSlot;
     if (!clip?.photoId || !pageId || index == null) return;
+    if (pageIsLocked(get().pages, pageId)) {
+      flash("This page is locked.");
+      return;
+    }
     if (!get().photos.some((photo) => photo.id === clip.photoId)) return;
     set({ pages: patchSlot(get().pages, pageId, index, () => ({ ...clip })) });
     persistLater();
@@ -1071,6 +1149,10 @@ export const useBook = create<BookState>((set, get) => {
     const from = pages.find((page) => page.id === fromPageId);
     const to = pages.find((page) => page.id === toPageId);
     if (!from?.slots[fromIndex] || !to?.slots[toIndex]) return;
+    if (from.locked || to.locked) {
+      flash("This page is locked.");
+      return;
+    }
     const temp = from.slots[fromIndex];
     from.slots[fromIndex] = to.slots[toIndex];
     to.slots[toIndex] = temp;
@@ -1083,6 +1165,7 @@ export const useBook = create<BookState>((set, get) => {
     const placed: Slot[] = [];
     const homes: { page: number; index: number }[] = [];
     pages.forEach((page, pageIndex) => {
+      if (page.locked) return;
       page.slots.forEach((slot, index) => {
         if (!slot.photoId) return;
         placed.push(slot);
@@ -1186,9 +1269,11 @@ export const useBook = create<BookState>((set, get) => {
       }),
     }));
     const placed: string[] = [];
+    const held = heldPhotoIds(updated);
     for (const page of updated) {
+      if (page.locked) continue;
       for (const slot of page.slots) {
-        if (slot.photoId && !placed.includes(slot.photoId)) placed.push(slot.photoId);
+        if (slot.photoId && !placed.includes(slot.photoId) && !held.has(slot.photoId)) placed.push(slot.photoId);
       }
     }
     const takenOf = new Map(photos.map((photo) => [photo.id, photo.takenAt]));
@@ -1196,7 +1281,7 @@ export const useBook = create<BookState>((set, get) => {
     const shape = new Map(photos.map((photo) => [photo.id, photo.w > photo.h]));
     const pages =
       ordered.length > 0
-        ? pagesInDateOrder(updated, ordered, get().orientation === "landscape", (id) => shape.get(id) === true)
+        ? mergeLocked(updated, pagesInDateOrder(updated, ordered, get().orientation === "landscape", (id) => shape.get(id) === true))
         : updated;
     const active = pages.find((page) => page.slots.some((slot) => slot.photoId && wanted.has(slot.photoId)));
     set({
@@ -1225,6 +1310,10 @@ export const useBook = create<BookState>((set, get) => {
     persistLater();
   },
   setSlotCrop: (pageId, index, crop) => {
+    if (pageIsLocked(get().pages, pageId)) {
+      flash("This page is locked.");
+      return;
+    }
     set({
       pages: patchSlot(get().pages, pageId, index, (slot) => ({
         ...slot,
@@ -1236,6 +1325,10 @@ export const useBook = create<BookState>((set, get) => {
     persistLater();
   },
   setSlotAdjust: (pageId, index, patch) => {
+    if (pageIsLocked(get().pages, pageId)) {
+      flash("This page is locked.");
+      return;
+    }
     set({
       pages: patchSlot(get().pages, pageId, index, (slot) => ({ ...slot, adjust: mergeAdjust(slot.adjust, patch) })),
     });
@@ -1248,12 +1341,18 @@ export const useBook = create<BookState>((set, get) => {
     set({
       pages: get().pages.map((page) => ({
         ...page,
-        slots: page.slots.map((slot) => (slot.photoId && wanted.has(slot.photoId) ? { ...slot, adjust: next } : slot)),
+        slots: page.slots.map((slot) =>
+          !page.locked && slot.photoId && wanted.has(slot.photoId) ? { ...slot, adjust: next } : slot,
+        ),
       })),
     });
     persistLater();
   },
   rotateSlot: (pageId, index) => {
+    if (pageIsLocked(get().pages, pageId)) {
+      flash("This page is locked.");
+      return;
+    }
     set({
       pages: patchSlot(get().pages, pageId, index, (slot) => ({
         ...slot,
@@ -1268,8 +1367,12 @@ export const useBook = create<BookState>((set, get) => {
     await get().deletePhotos([id]);
   },
   deletePhotos: async (ids) => {
-    const drop = new Set(ids.filter(Boolean));
-    if (drop.size === 0) return;
+    const protectedIds = heldPhotoIds(get().pages);
+    const drop = new Set(ids.filter((id) => id && !protectedIds.has(id)));
+    if (drop.size === 0) {
+      if (ids.length > 0) flash("This page is locked.");
+      return;
+    }
     for (const id of drop) {
       const photo = get().photos.find((item) => item.id === id);
       if (photo) URL.revokeObjectURL(photo.thumbUrl);

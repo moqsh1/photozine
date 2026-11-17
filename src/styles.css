@@ -204,6 +204,26 @@ body {
   scrollbar-color: var(--color-line) transparent;
 }
 
+.scroll-library {
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-ink) transparent;
+}
+
+.scroll-library::-webkit-scrollbar {
+  width: 16px;
+}
+
+.scroll-library::-webkit-scrollbar-thumb {
+  background: var(--color-ink);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.scroll-library::-webkit-scrollbar-track {
+  background: var(--color-caption);
+}
+
 .safe-bottom {
   padding-bottom: max(0px, env(safe-area-inset-bottom));
 }

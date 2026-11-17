@@ -314,7 +314,7 @@ export const Library = memo(function Library({
           Tap a frame to place <span className="font-medium">{placing.name}</span>.
         </p>
       )}
-      <div ref={scrollRef} className="scroll-thin mt-1 min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+      <div ref={scrollRef} className="scroll-library mt-1 min-h-0 flex-1 overflow-y-auto px-3 pb-2">
         {photos.length === 0 ? (
           <div className="flex h-full min-h-48 flex-col items-center justify-center border border-dashed border-line px-4 py-8 text-center">
             <p className="font-serif text-lg">Drop in a whole set</p>
