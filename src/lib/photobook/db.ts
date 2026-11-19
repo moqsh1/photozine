@@ -82,6 +82,96 @@ export async function saveBook(book: Book): Promise<void> {
   await transactionDone(tx);
 }
 
+export type LibraryPhoto = {
+  id: string;
+  name: string;
+  w: number;
+  h: number;
+  takenAt: number | null;
+  seq: number;
+};
+
+export type RestorePoint = {
+  id: string;
+  at: number;
+  keep: boolean;
+  book: Book;
+  photos: LibraryPhoto[];
+};
+
+export async function loadLibrary(): Promise<LibraryPhoto[] | null> {
+  const db = await openDb();
+  const value = await requestToPromise(db.transaction("book", "readonly").objectStore("book").get("library"));
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || typeof item.id !== "string") return [];
+    return [
+      {
+        id: item.id,
+        name: typeof item.name === "string" ? item.name : "Photo",
+        w: Number(item.w) || 0,
+        h: Number(item.h) || 0,
+        takenAt: typeof item.takenAt === "number" ? item.takenAt : null,
+        seq: Number(item.seq) || 0,
+      },
+    ];
+  });
+}
+
+export async function saveLibrary(photos: LibraryPhoto[]): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction("book", "readwrite");
+  tx.objectStore("book").put(photos, "library");
+  await transactionDone(tx);
+}
+
+export async function loadRestorePoints(): Promise<RestorePoint[]> {
+  const db = await openDb();
+  const value = await requestToPromise(db.transaction("book", "readonly").objectStore("book").get("restore-points"));
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => item && typeof item.id === "string" && typeof item.at === "number" && item.book && Array.isArray(item.photos));
+}
+
+export async function writeRestorePoint(point: RestorePoint, force: boolean): Promise<RestorePoint[]> {
+  const existing = await loadRestorePoints();
+  const last = existing[existing.length - 1];
+  const same =
+    last &&
+    last.photos.length === point.photos.length &&
+    JSON.stringify(last.book) === JSON.stringify(point.book) &&
+    last.photos.every((photo, index) => photo.id === point.photos[index]?.id);
+  if (same) return prunePoints(existing);
+  if (!force && last && point.at - last.at < 20 * 60 * 1000) return existing;
+  const next = prunePoints([...existing, point]);
+  const db = await openDb();
+  const tx = db.transaction("book", "readwrite");
+  tx.objectStore("book").put(next, "restore-points");
+  await transactionDone(tx);
+  return next;
+}
+
+function prunePoints(points: RestorePoint[]): RestorePoint[] {
+  const now = Date.now();
+  const week = now - 7 * 24 * 60 * 60 * 1000;
+  const fresh = points.filter((point) => point.at >= week).sort((a, b) => a.at - b.at);
+  const kept: RestorePoint[] = [];
+  for (const point of fresh) {
+    if (point.keep) {
+      kept.push(point);
+      continue;
+    }
+    const age = now - point.at;
+    const gap = age < 6 * 60 * 60 * 1000 ? 20 * 60 * 1000 : age < 24 * 60 * 60 * 1000 ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const previous = kept[kept.length - 1];
+    if (!previous || previous.keep || point.at - previous.at >= gap) kept.push(point);
+    else kept[kept.length - 1] = point;
+  }
+  const pinned = kept.filter((point) => point.keep);
+  const rest = kept.filter((point) => !point.keep);
+  const room = Math.max(0, 48 - pinned.length);
+  return [...pinned, ...rest.slice(-room)].sort((a, b) => a.at - b.at);
+}
+
 export async function loadSyncHandle(): Promise<FileSystemDirectoryHandle | null> {
   const db = await openDb();
   const value = await requestToPromise(db.transaction("book", "readonly").objectStore("book").get("sync-dir"));

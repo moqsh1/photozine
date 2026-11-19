@@ -353,7 +353,7 @@ export const Library = memo(function Library({
           <div className="flex h-full min-h-48 flex-col items-center justify-center border border-dashed border-line px-4 py-8 text-center">
             <p className="font-serif text-lg">Drop in a whole set</p>
             <p className="mt-2 max-w-56 text-sm text-pretty text-muted">
-              Up to 1,000 photos. Add them from the menu. They flow onto 8×12 pages, one to four a page.
+              Up to 2,000 photos. Add them from the menu. They flow onto 8×12 pages, one to four a page.
             </p>
           </div>
         ) : visible.length === 0 ? (

@@ -4,14 +4,20 @@ import { captionForDate, dateFromName, formatHindiDate, readTakenAt } from "@/li
 import { decodeImage, measureImage, prettyName } from "@/lib/photobook/decode";
 import { pullNewerBook, queueFolderSync } from "@/lib/photobook/sync";
 import {
-  deleteAllPhotoRecords,
   deletePhotoRecord,
   getBlob,
+  listThumbIds,
   loadBook,
+  loadLibrary,
+  loadRestorePoints,
   loadThumbs,
   putPhoto,
   putThumb,
   saveBook,
+  saveLibrary,
+  writeRestorePoint,
+  type LibraryPhoto,
+  type RestorePoint,
   updateThumbMeta,
 } from "@/lib/photobook/db";
 import { defaultLayout, makePage, withLayout, LAYOUT_BY_ID } from "@/lib/photobook/layouts";
@@ -52,6 +58,7 @@ type BookState = {
   clipboard: Slot | null;
   canUndo: boolean;
   canRedo: boolean;
+  restorePoints: { id: string; at: number; photos: number; pages: number }[];
   libraryQuery: string;
   libraryFilter: LibraryFilter;
   hydrate: () => Promise<void>;
@@ -109,6 +116,7 @@ type BookState = {
   deletePhotos: (ids: string[]) => Promise<void>;
   clearPages: () => void;
   deleteAllPhotos: () => Promise<void>;
+  restoreFromPoint: (id: string) => Promise<void>;
   loadProject: (book: Book, incoming: { id: string; name: string; blob: Blob; takenAt?: number | null; seq?: number; full?: boolean }[]) => Promise<void>;
   mergeDriveBook: (
     book: Book,
@@ -221,12 +229,87 @@ function persistLater() {
   saveTimer = window.setTimeout(() => {
     const latest = snapshot(useBook.getState());
     void saveBook(latest).then(() => {
+      void saveLibrary(libraryMeta(useBook.getState().photos));
+      void checkpoint(false);
       queueFolderSync(latest, useBook.getState().photos);
       if (!cloudPush) return;
       window.clearTimeout(cloudTimer);
       cloudTimer = window.setTimeout(() => cloudPush?.(latest, useBook.getState().photos), 1500);
     });
   }, 220);
+}
+
+function libraryMeta(photos: Photo[]): LibraryPhoto[] {
+  return photos.map((photo) => ({
+    id: photo.id,
+    name: photo.name,
+    w: photo.w,
+    h: photo.h,
+    takenAt: photo.takenAt,
+    seq: photo.seq,
+  }));
+}
+
+function pointSummary(point: RestorePoint) {
+  return {
+    id: point.id,
+    at: point.at,
+    photos: point.photos.length,
+    pages: point.book.pages.length,
+  };
+}
+
+let lastAutoCheckpoint = 0;
+
+async function rememberPoints(points: RestorePoint[]) {
+  useBook.setState({ restorePoints: points.map(pointSummary).reverse() });
+}
+
+async function checkpoint(force: boolean) {
+  if (!canSave) return;
+  const now = Date.now();
+  if (!force && now - lastAutoCheckpoint < 20 * 60 * 1000) return;
+  const state = useBook.getState();
+  const point: RestorePoint = {
+    id: crypto.randomUUID(),
+    at: now,
+    keep: force,
+    book: snapshot(state),
+    photos: libraryMeta(state.photos),
+  };
+  const points = await writeRestorePoint(point, force);
+  if (!force) lastAutoCheckpoint = now;
+  else if (points.some((item) => item.id === point.id)) lastAutoCheckpoint = now;
+  await rememberPoints(points);
+  const keep = new Set<string>();
+  for (const photo of state.photos) keep.add(photo.id);
+  for (const saved of points) for (const photo of saved.photos) keep.add(photo.id);
+  const stored = await listThumbIds();
+  for (const id of stored) if (!keep.has(id)) await deletePhotoRecord(id);
+}
+
+async function photosFromMeta(list: LibraryPhoto[]): Promise<{ photos: Photo[]; missing: number }> {
+  const thumbs = await loadThumbs();
+  const byId = new Map(thumbs.map((thumb) => [thumb.id, thumb]));
+  const photos: Photo[] = [];
+  let missing = 0;
+  for (const meta of list) {
+    const thumb = byId.get(meta.id);
+    if (!thumb) {
+      missing += 1;
+      continue;
+    }
+    photos.push({
+      id: meta.id,
+      name: meta.name || thumb.name,
+      w: thumb.w,
+      h: thumb.h,
+      thumbUrl: URL.createObjectURL(thumb.thumb),
+      takenAt: meta.takenAt,
+      seq: meta.seq,
+    });
+  }
+  return { photos, missing };
 }
 
 const past: Book[] = [];
@@ -459,6 +542,7 @@ export const useBook = create<BookState>((set, get) => {
   clipboard: null,
   canUndo: false,
   canRedo: false,
+  restorePoints: [],
   libraryQuery: "",
   libraryFilter: "all",
 
@@ -469,8 +553,10 @@ export const useBook = create<BookState>((set, get) => {
     }
     booted = true;
     try {
-      const [thumbs, stored] = await Promise.all([loadThumbs(), loadBook()]);
+      const [thumbs, stored, catalog] = await Promise.all([loadThumbs(), loadBook(), loadLibrary()]);
+      const allowed = catalog ? new Set(catalog.map((photo) => photo.id)) : null;
       const photos: Photo[] = thumbs
+        .filter((thumb) => !allowed || allowed.has(thumb.id))
         .map((thumb) => ({
           id: thumb.id,
           name: thumb.name,
@@ -516,6 +602,10 @@ export const useBook = create<BookState>((set, get) => {
     }
     await get().backfillDates();
     armHistory();
+    const points = await loadRestorePoints();
+    await rememberPoints(points);
+    lastAutoCheckpoint = points.reduce((max, point) => Math.max(max, point.at), 0);
+    void checkpoint(false);
     try {
       const remote = await pullNewerBook();
       if (remote) await get().loadProject(remote.book, remote.photos);
@@ -626,7 +716,7 @@ export const useBook = create<BookState>((set, get) => {
     const images = files.filter((file) => file.type.startsWith("image/"));
     const room = MAX_PHOTOS - get().photos.length;
     if (room <= 0) {
-      flash("This book already holds 1,000 photos.");
+      flash("This book already holds 2,000 photos.");
       return;
     }
     if (images.length === 0) {
@@ -757,7 +847,7 @@ export const useBook = create<BookState>((set, get) => {
     const notes: string[] = [];
     if (importCancelled) notes.push("Import stopped.");
     else notes.push(`${ids.length} photo${ids.length === 1 ? "" : "s"} added.`);
-    if (overflow > 0) notes.push(`${overflow} left out — the limit is 1,000.`);
+    if (overflow > 0) notes.push(`${overflow} left out — the limit is 2,000.`);
     if (failed > 0) notes.push(`${failed} could not be read.`);
     flash(notes.join(" "));
     for (const id of ids.slice(0, 8)) void get().ensureFull(id);
@@ -1373,6 +1463,7 @@ export const useBook = create<BookState>((set, get) => {
       if (ids.length > 0) flash("This page is locked.");
       return;
     }
+    await checkpoint(true);
     for (const id of drop) {
       const photo = get().photos.find((item) => item.id === id);
       if (photo) URL.revokeObjectURL(photo.thumbUrl);
@@ -1391,15 +1482,18 @@ export const useBook = create<BookState>((set, get) => {
       })),
     });
     persistLater();
-    for (const id of drop) await deletePhotoRecord(id);
   },
   clearPages: () => {
-    const page = makePage(defaultLayout(get().density));
-    set({ pages: [page], activePageId: page.id, selectedSlot: null });
-    persistLater();
-    flash("Pages cleared. Photos are still in the library.");
+    void (async () => {
+      await checkpoint(true);
+      const page = makePage(defaultLayout(get().density));
+      set({ pages: [page], activePageId: page.id, selectedSlot: null });
+      persistLater();
+      flash("Pages cleared. Photos are still in the library.");
+    })();
   },
   deleteAllPhotos: async () => {
+    await checkpoint(true);
     for (const photo of get().photos) URL.revokeObjectURL(photo.thumbUrl);
     for (const url of Object.values(get().fullUrls)) URL.revokeObjectURL(url);
     const page = makePage(defaultLayout(get().density));
@@ -1412,10 +1506,48 @@ export const useBook = create<BookState>((set, get) => {
       selectedSlot: null,
     });
     persistLater();
-    await deleteAllPhotoRecords();
-    flash("All photos removed.");
+    flash("All photos removed. You can bring them back from a restore point.");
+  },
+  restoreFromPoint: async (id) => {
+    const points = await loadRestorePoints();
+    const point = points.find((item) => item.id === id);
+    if (!point) {
+      flash("That restore point is no longer on this device.");
+      return;
+    }
+    await checkpoint(true);
+    const rebuilt = await photosFromMeta(point.photos);
+    for (const photo of get().photos) URL.revokeObjectURL(photo.thumbUrl);
+    for (const url of Object.values(get().fullUrls)) URL.revokeObjectURL(url);
+    const clean = sanitizeBook(point.book);
+    const have = new Set(rebuilt.photos.map((photo) => photo.id));
+    clean.pages = clean.pages.map((page) => ({
+      ...page,
+      slots: page.slots.map((slot) => (slot.photoId && !have.has(slot.photoId) ? emptySlot() : slot)),
+    }));
+    nextSeq = rebuilt.photos.reduce((max, photo) => Math.max(max, photo.seq), 0) + 1;
+    set({
+      ...clean,
+      photos: rebuilt.photos,
+      fullUrls: {},
+      placingId: null,
+      activePageId: clean.pages[0]?.id ?? null,
+      selectedSlot: 0,
+      importing: null,
+      libraryQuery: "",
+      libraryFilter: "all",
+    });
+    dirty = true;
+    await saveBook(clean);
+    await saveLibrary(libraryMeta(rebuilt.photos));
+    flash(
+      rebuilt.missing > 0
+        ? `Restored. ${rebuilt.missing} photo${rebuilt.missing === 1 ? "" : "s"} had already been removed.`
+        : "Restored to that point.",
+    );
   },
   loadProject: async (book, incoming) => {
+    await checkpoint(true);
     set({ importing: incoming.length ? { done: 0, total: incoming.length } : null, notice: null });
     try {
       const nextPhotos: Photo[] = [];
@@ -1439,11 +1571,7 @@ export const useBook = create<BookState>((set, get) => {
         });
         set({ importing: { done: index + 1, total: incoming.length } });
       }
-      const kept = new Set(nextPhotos.map((photo) => photo.id));
-      for (const photo of get().photos) {
-        URL.revokeObjectURL(photo.thumbUrl);
-        if (!kept.has(photo.id)) await deletePhotoRecord(photo.id);
-      }
+      for (const photo of get().photos) URL.revokeObjectURL(photo.thumbUrl);
       for (const url of Object.values(get().fullUrls)) URL.revokeObjectURL(url);
       const clean = sanitizeBook(book);
       nextSeq = nextPhotos.reduce((max, photo) => Math.max(max, photo.seq), 0) + 1;
@@ -1460,6 +1588,7 @@ export const useBook = create<BookState>((set, get) => {
       });
       dirty = true;
       await saveBook(clean);
+      await saveLibrary(libraryMeta(nextPhotos));
       flash(`Opened “${clean.title}”.`);
     } catch (error) {
       set({ importing: null });
@@ -1467,6 +1596,7 @@ export const useBook = create<BookState>((set, get) => {
     }
   },
   mergeDriveBook: async (book, incoming, catalog) => {
+    await checkpoint(true);
     const freshIds = new Set(incoming.map((item) => item.id));
     const wanted = new Set(catalog.map((item) => item.id));
     set({ importing: incoming.length ? { done: 0, total: incoming.length } : null, notice: null });
@@ -1475,7 +1605,6 @@ export const useBook = create<BookState>((set, get) => {
       for (const photo of get().photos) {
         if (wanted.has(photo.id) && !freshIds.has(photo.id)) continue;
         URL.revokeObjectURL(photo.thumbUrl);
-        if (!wanted.has(photo.id)) await deletePhotoRecord(photo.id);
       }
       const next = new Map<string, Photo>();
       for (const item of catalog) {
@@ -1560,6 +1689,7 @@ export const useBook = create<BookState>((set, get) => {
       set({ ...clean, photos, fullUrls, placingId: null, activePageId: active, importing: null });
       dirty = true;
       await saveBook(clean);
+      await saveLibrary(libraryMeta(photos));
       dirty = false;
     } catch (error) {
       set({ importing: null });

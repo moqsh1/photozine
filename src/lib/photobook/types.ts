@@ -57,7 +57,7 @@ export type Photo = {
   seq: number;
 };
 
-export const MAX_PHOTOS = 1000;
+export const MAX_PHOTOS = 2000;
 
 export const PAGE_INCHES: Record<Orientation, { w: number; h: number }> = {
   landscape: { w: 12, h: 8 },

@@ -64,6 +64,8 @@ type InspectorProps = {
   onPlaceAt: (pageNumber: number) => void;
   onClearPages: () => void;
   onDeletePhotos: () => void;
+  restorePoints: { id: string; at: number; photos: number; pages: number }[];
+  onRestore: (id: string) => void;
 };
 
 export const Inspector = memo(function Inspector(props: InspectorProps) {
@@ -425,7 +427,29 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
       )}
 
       <section className="mt-auto border-t border-line px-4 py-4">
-        <button type="button" className="btn btn-quiet w-full" onClick={props.onClearPages}>
+        <h2 className="font-serif text-xl">Restore</h2>
+        <p className="mt-1 text-sm text-muted">
+          Earlier positions stay on this device for 7 days. A point is saved as you work, and again just before a delete.
+        </p>
+        {props.restorePoints.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">No restore point yet.</p>
+        ) : (
+          <ul className="mt-2 grid max-h-52 gap-1 overflow-y-auto">
+            {props.restorePoints.map((point) => (
+              <li key={point.id}>
+                <button type="button" className="btn btn-quiet w-full" onClick={() => props.onRestore(point.id)}>
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <span>{restoreLabel(point.at)}</span>
+                    <span className="text-muted tabular-nums">
+                      {point.photos} · {point.pages}p
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" className="btn btn-quiet mt-4 w-full" onClick={props.onClearPages}>
           Clear pages
         </button>
         <button type="button" className="btn btn-quiet mt-2 w-full text-accent" onClick={props.onDeletePhotos}>
@@ -435,6 +459,17 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
     </div>
   );
 });
+
+function restoreLabel(at: number) {
+  const minutes = Math.max(0, Math.round((Date.now() - at) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
 
 function LayoutGlyph({ layoutId, active }: { layoutId: LayoutId; active: boolean }) {
   const layout = LAYOUT_BY_ID[layoutId];

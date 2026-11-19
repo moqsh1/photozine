@@ -514,6 +514,8 @@ export function Studio() {
       onPlaceAt={book.placePageAt}
       onClearPages={() => setConfirm("pages")}
       onDeletePhotos={() => setConfirm("photos")}
+      restorePoints={book.restorePoints}
+      onRestore={(id) => void book.restoreFromPoint(id)}
     />
   );
 
@@ -923,7 +925,7 @@ export function Studio() {
             </h2>
             <p className="mt-2 text-sm text-pretty text-muted">
               {confirm === "photos"
-                ? "This removes the library and empties the book on this device."
+                ? "This removes the library and empties the book on this device. A restore point from just before this stays for 7 days."
                 : confirm === "load"
                   ? "Opening a project replaces the pages and photos stored on this device."
                   : "Photos stay in the library. Pages go back to a blank spread."}
