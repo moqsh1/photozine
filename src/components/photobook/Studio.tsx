@@ -521,7 +521,7 @@ export function Studio() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg text-ink">
-      <header className="no-print flex items-center gap-3 border-b border-line bg-surface px-3 py-2 sm:px-4">
+      <header className="workspace-pan no-print flex shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-2 sm:px-4">
         <div className="flex flex-col leading-none">
           <div className="flex items-center gap-2">
             <img src="/icon-192.png" alt="" className="size-9 rounded-lg" />
@@ -659,7 +659,7 @@ export function Studio() {
           <p className="font-serif text-2xl">Opening your book…</p>
         </main>
       ) : (
-        <div className="no-print flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="workspace-pan no-print flex min-h-0 min-w-0 flex-1">
           <aside className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden bg-surface" style={{ width: paneW[0] }}>
             {library}
           </aside>

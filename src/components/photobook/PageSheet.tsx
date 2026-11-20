@@ -285,7 +285,7 @@ function Frame({
       <div
         ref={frameRef}
         className={cn(
-          "absolute inset-x-0 top-0 overflow-hidden touch-none",
+          "absolute inset-x-0 top-0 overflow-hidden",
           interactive && photo && "reframe",
         )}
         style={{ bottom: `${captionFrac * 100}%` }}
@@ -297,8 +297,8 @@ function Frame({
                 if (placing) return;
                 const frame = frameRef.current;
                 if (!frame) return;
-                frame.setPointerCapture(event.pointerId);
                 drag.current = { x: event.clientX, y: event.clientY, panX: slot.panX, panY: slot.panY, mode: "pending", to: null };
+                if (event.pointerType !== "touch") frame.setPointerCapture(event.pointerId);
               }
             : undefined
         }
@@ -311,6 +311,13 @@ function Frame({
                 const dx = event.clientX - start.x;
                 const dy = event.clientY - start.y;
                 if (start.mode === "pending" && Math.abs(dx) + Math.abs(dy) < 8) return;
+                if (event.pointerType === "touch" && start.mode === "pending" && Math.abs(dx) > Math.abs(dy)) {
+                  drag.current = null;
+                  return;
+                }
+                if (event.pointerType === "touch" && !frame.hasPointerCapture(event.pointerId)) {
+                  frame.setPointerCapture(event.pointerId);
+                }
                 const target = frameUnder(event.clientX, event.clientY);
                 if (target != null) {
                   start.mode = "swap";
