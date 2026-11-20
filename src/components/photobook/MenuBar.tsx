@@ -17,8 +17,6 @@ type MenuBarProps = {
   onSync: () => void;
   onLoadSync: () => void;
   onDriveConnect: () => void;
-  onAddPhotos: () => void;
-  onSamples: () => void;
   status?: ReactNode;
   syncName: string | null;
   canSync: boolean;
@@ -43,6 +41,8 @@ type MenuBarProps = {
   density: 1 | 2 | 3 | 4;
   onDensity: (density: 1 | 2 | 3 | 4) => void;
   busy: boolean;
+  panes: { key: string; label: string; open: boolean }[];
+  onTogglePane: (key: string) => void;
 };
 
 const LAYOUTS: { id: LayoutId; label: string }[] = [
@@ -124,12 +124,17 @@ export function MenuBar(props: MenuBarProps) {
 
   return (
     <div ref={barRef} className="no-print relative flex gap-1 border-b border-line bg-surface px-2" role="menubar">
-      <button type="button" className="min-h-11 px-3 text-sm text-ink disabled:text-muted" onClick={props.onSamples} disabled={props.busy}>
-        Sample
-      </button>
-      <button type="button" className="min-h-11 px-3 text-sm text-ink disabled:text-muted" onClick={props.onAddPhotos} disabled={props.busy}>
-        Add photos
-      </button>
+      {props.panes.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          className={cn("my-1 min-h-9 px-3 text-sm", item.open ? "bg-ink text-page" : "text-muted")}
+          aria-pressed={item.open}
+          onClick={() => props.onTogglePane(item.key)}
+        >
+          {item.label}
+        </button>
+      ))}
       {menus.map((menu) => (
         <div key={menu.name} className="relative">
           <button

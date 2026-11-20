@@ -646,10 +646,6 @@ export function Studio() {
         onSync={() => void onLinkSync()}
         onLoadSync={() => void onLoadSync()}
         onDriveConnect={() => void connectDrive()}
-        onSamples={() => {
-          void book.loadSamples();
-        }}
-        onAddPhotos={openFiles}
         syncName={syncName}
         canSync={syncSupported()}
         status={
@@ -692,21 +688,9 @@ export function Studio() {
         density={book.density}
         onDensity={book.setDensity}
         busy={book.preparingPrint || !book.ready || book.importing != null}
+        panes={PANE_LIST.map((item) => ({ ...item, open: paneOpen[item.key] }))}
+        onTogglePane={(key) => togglePane(key as PaneKey)}
       />
-
-      <div className="no-print flex gap-1 border-b border-line bg-surface px-2 py-1" role="toolbar" aria-label="Panes">
-        {PANE_LIST.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={cn("btn px-2", paneOpen[item.key] ? "btn-ink" : "btn-quiet")}
-            aria-pressed={paneOpen[item.key]}
-            onClick={() => togglePane(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
 
       {book.placingId && (
         <div className="no-print flex items-center justify-between gap-3 border-b border-line bg-ink px-4 py-2 text-sm text-page">
