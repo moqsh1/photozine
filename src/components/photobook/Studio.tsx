@@ -20,6 +20,14 @@ import { cn } from "@/lib/cn";
 
 type ConfirmKind = "pages" | "photos" | "load" | null;
 type ExportMode = "current" | "selected" | "all";
+type PaneKey = "library" | "pages" | "preview" | "settings";
+
+const PANE_LIST: { key: PaneKey; label: string }[] = [
+  { key: "library", label: "Library" },
+  { key: "pages", label: "Pages" },
+  { key: "preview", label: "Preview" },
+  { key: "settings", label: "Settings" },
+];
 
 export function Studio() {
   const book = useBook();
@@ -68,9 +76,16 @@ export function Studio() {
   const [paneW, setPaneW] = useState<[number, number, number]>(readPaneWidths);
   const paneWRef = useRef(paneW);
   paneWRef.current = paneW;
+  const [paneOpen, setPaneOpen] = useState(readPaneOpen);
   useEffect(() => {
     localStorage.setItem("pz-panes", JSON.stringify(paneW));
   }, [paneW]);
+  useEffect(() => {
+    localStorage.setItem("pz-pane-open", JSON.stringify(paneOpen));
+  }, [paneOpen]);
+  function togglePane(key: PaneKey) {
+    setPaneOpen((current) => ({ ...current, [key]: !current[key] }));
+  }
   const openFiles = useCallback(() => {
     importTarget.current = null;
     fileRef.current?.click();
@@ -92,7 +107,7 @@ export function Studio() {
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [book.ready]);
+  }, [book.ready, paneOpen.preview]);
 
   const pagePhotoKey = book.pages
     .map((page) => `${page.id}:${page.slots.map((slot) => slot.photoId ?? "").join(",")}`)
@@ -683,6 +698,20 @@ export function Studio() {
         busy={book.preparingPrint || !book.ready || book.importing != null}
       />
 
+      <div className="no-print flex gap-1 border-b border-line bg-surface px-2 py-1" role="toolbar" aria-label="Panes">
+        {PANE_LIST.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={cn("btn px-2", paneOpen[item.key] ? "btn-ink" : "btn-quiet")}
+            aria-pressed={paneOpen[item.key]}
+            onClick={() => togglePane(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       {book.placingId && (
         <div className="no-print flex items-center justify-between gap-3 border-b border-line bg-ink px-4 py-2 text-sm text-page">
           <p>Tap a frame to place this photo.</p>
@@ -698,49 +727,66 @@ export function Studio() {
         </main>
       ) : (
         <div className="workspace-pan no-print flex min-h-0 min-w-0 flex-1">
-          <aside className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden bg-surface" style={{ width: paneW[0] }}>
-            {library}
-          </aside>
-          <PaneHandle
-            label="Resize library"
-            min={180}
-            max={840}
-            get={() => paneWRef.current[0]}
-            set={(width) => setPaneW((current) => [width, current[1], current[2]])}
-          />
-          <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[1] }}>
-            <PageStrip
-              pages={book.pages}
-              activePageId={page?.id ?? null}
-              orientation={book.orientation}
-              photoById={photoById}
-              onSelect={book.selectPage}
-              onReorder={book.movePageTo}
-              onAddPhoto={book.addPhotoToPage}
-              onToggleLock={book.togglePageLock}
-              onReorderPhotos={book.reorderPhotos}
-              picking={pagePicking}
-              pickedIds={pickedPages}
-              onTogglePick={(id) => setPickedPages((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
-              onPickMode={(on) => {
-                setPagePicking(on);
-                if (!on) setPickedPages([]);
-              }}
-              onClearPicked={() => {
-                book.clearCaptionsOnPages(pickedPages);
-                setPickedPages([]);
-                setPagePicking(false);
-              }}
+          {paneOpen.library && (
+            <aside className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden bg-surface" style={{ width: paneW[0] }}>
+              <PaneTitle name="Library" onHide={() => togglePane("library")} />
+              <div className="min-h-0 flex-1 overflow-hidden">{library}</div>
+            </aside>
+          )}
+          {paneOpen.library && (paneOpen.pages || paneOpen.preview || paneOpen.settings) && (
+            <PaneHandle
+              label="Resize library"
+              min={180}
+              max={840}
+              get={() => paneWRef.current[0]}
+              set={(width) => setPaneW((current) => [width, current[1], current[2]])}
             />
-          </aside>
-          <PaneHandle
-            label="Resize pages"
-            min={220}
-            max={720}
-            get={() => paneWRef.current[1]}
-            set={(width) => setPaneW((current) => [current[0], width, current[2]])}
-          />
+          )}
+          {paneOpen.pages && (
+            <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[1] }}>
+              <PaneTitle name="Pages" onHide={() => togglePane("pages")} />
+              <div className="min-h-0 flex-1 overflow-hidden">
+              <PageStrip
+                pages={book.pages}
+                activePageId={page?.id ?? null}
+                orientation={book.orientation}
+                photoById={photoById}
+                onSelect={book.selectPage}
+                onReorder={book.movePageTo}
+                onAddPhoto={book.addPhotoToPage}
+                onToggleLock={book.togglePageLock}
+                onReorderPhotos={book.reorderPhotos}
+                picking={pagePicking}
+                pickedIds={pickedPages}
+                onTogglePick={(id) => setPickedPages((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))}
+                onPickMode={(on) => {
+                  setPagePicking(on);
+                  if (!on) setPickedPages([]);
+                }}
+                onClearPicked={() => {
+                  book.clearCaptionsOnPages(pickedPages);
+                  setPickedPages([]);
+                  setPagePicking(false);
+                }}
+              />
+              </div>
+            </aside>
+          )}
+          {paneOpen.pages && (paneOpen.preview || paneOpen.settings) && (
+            <PaneHandle
+              label="Resize pages"
+              min={220}
+              max={720}
+              get={() => paneWRef.current[1]}
+              set={(width) => setPaneW((current) => [current[0], width, current[2]])}
+            />
+          )}
+          {paneOpen.preview && (
           <section className="relative flex h-full min-w-48 flex-1 flex-col">
+            <PaneTitle name="Preview" onHide={() => togglePane("preview")} />
+            <p className="shrink-0 py-1 text-center font-serif text-2xl font-bold tracking-wide text-ink">
+              {page ? `Page ${pageIndex + 1}` : ""}
+            </p>
             <div
               ref={stageRef}
               className="relative min-h-0 flex-1"
@@ -819,17 +865,23 @@ export function Studio() {
               </button>
             </div>
           </section>
+          )}
+          {paneOpen.settings && (paneOpen.library || paneOpen.pages || paneOpen.preview) && (
           <PaneHandle
-            label="Resize preview"
+            label="Resize settings"
             min={220}
             max={560}
             sign={-1}
             get={() => paneWRef.current[2]}
             set={(width) => setPaneW((current) => [current[0], current[1], width])}
           />
+          )}
+          {paneOpen.settings && (
           <aside className="relative flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[2] }}>
-            {inspector}
+            <PaneTitle name="Settings" onHide={() => togglePane("settings")} />
+            <div className="min-h-0 flex-1 overflow-hidden">{inspector}</div>
           </aside>
+          )}
         </div>
       )}
 
@@ -1017,6 +1069,22 @@ export function Studio() {
   );
 }
 
+function readPaneOpen(): Record<PaneKey, boolean> {
+  const open: Record<PaneKey, boolean> = { library: true, pages: true, preview: true, settings: true };
+  if (typeof window === "undefined") return open;
+  try {
+    const raw = JSON.parse(localStorage.getItem("pz-pane-open") || "");
+    if (raw && typeof raw === "object") {
+      for (const item of PANE_LIST) {
+        if (typeof raw[item.key] === "boolean") open[item.key] = raw[item.key];
+      }
+    }
+  } catch {
+    // Keep every pane open.
+  }
+  return open;
+}
+
 function readPaneWidths(): [number, number, number] {
   if (typeof window === "undefined") return [256, 320, 288];
   try {
@@ -1028,6 +1096,17 @@ function readPaneWidths(): [number, number, number] {
     // Keep the default widths.
   }
   return [256, 320, 288];
+}
+
+function PaneTitle({ name, onHide }: { name: string; onHide: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-2 py-1">
+      <h2 className="font-serif text-sm font-semibold tracking-wide">{name}</h2>
+      <button type="button" className="text-xs text-muted underline" onClick={onHide} aria-label={`Hide ${name}`}>
+        Hide
+      </button>
+    </div>
+  );
 }
 
 function clampPane(value: number, min: number, max: number) {
