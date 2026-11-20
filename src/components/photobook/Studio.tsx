@@ -58,6 +58,8 @@ export function Studio() {
   const [syncName, setSyncName] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [pickedPhotos, setPickedPhotos] = useState<string[]>([]);
+  const [exchangeOn, setExchangeOn] = useState(false);
+  const [exchangeFrom, setExchangeFrom] = useState<{ pageId: string; index: number } | null>(null);
   const [pagePicking, setPagePicking] = useState(false);
   const [pickedPages, setPickedPages] = useState<string[]>([]);
   const onPhotoSelection = useCallback((ids: string[]) => setPickedPhotos(ids), []);
@@ -454,6 +456,42 @@ export function Studio() {
       onCaption={book.captionPhotos}
       onDate={book.datePhotos}
       onSelection={onPhotoSelection}
+      exchanging={exchangeOn}
+      exchangePhotoId={
+        exchangeFrom
+          ? (book.pages.find((item) => item.id === exchangeFrom.pageId)?.slots[exchangeFrom.index]?.photoId ?? null)
+          : null
+      }
+      onToggleExchange={() => {
+        setExchangeOn((on) => !on);
+        setExchangeFrom(null);
+      }}
+      onExchange={(photoId) => {
+        let found: { pageId: string; index: number } | null = null;
+        for (const item of book.pages) {
+          const index = item.slots.findIndex((slot) => slot.photoId === photoId);
+          if (index >= 0) {
+            found = { pageId: item.id, index };
+            break;
+          }
+        }
+        if (!found) {
+          setProblem("That photo is not on a page yet.");
+          return;
+        }
+        if (!exchangeFrom) {
+          setExchangeFrom(found);
+          book.selectPage(found.pageId);
+          book.selectSlot(found.index);
+          return;
+        }
+        if (exchangeFrom.pageId === found.pageId && exchangeFrom.index === found.index) {
+          setExchangeFrom(null);
+          return;
+        }
+        book.swapSlots(exchangeFrom.pageId, exchangeFrom.index, found.pageId, found.index);
+        setExchangeFrom(null);
+      }}
     />
   );
 
@@ -728,7 +766,24 @@ export function Studio() {
                     selectedSlot={book.selectedSlot}
                     pageSelected={book.selectedSlot == null}
                     placing={Boolean(book.placingId)}
-                    onSelectSlot={book.selectSlot}
+                    onSelectSlot={(index) => {
+                      if (!exchangeOn || !page) {
+                        book.selectSlot(index);
+                        return;
+                      }
+                      const target = { pageId: page.id, index };
+                      if (!exchangeFrom) {
+                        setExchangeFrom(target);
+                        book.selectSlot(index);
+                        return;
+                      }
+                      if (exchangeFrom.pageId === target.pageId && exchangeFrom.index === target.index) {
+                        setExchangeFrom(null);
+                        return;
+                      }
+                      book.swapSlots(exchangeFrom.pageId, exchangeFrom.index, target.pageId, target.index);
+                      setExchangeFrom(null);
+                    }}
                     onDeselect={book.clearSlotSelection}
                     onCommitPan={(index, panX, panY) => book.setSlotCrop(page.id, index, { panX, panY })}
                     onDropPhoto={(index, photoId) => book.assignPhoto(page.id, index, photoId)}

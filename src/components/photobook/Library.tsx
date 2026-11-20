@@ -25,6 +25,10 @@ type LibraryProps = {
   onCaption: (ids: string[], caption: string) => void;
   onDate: (ids: string[], takenAt: number | null) => void;
   onSelection: (ids: string[]) => void;
+  exchanging: boolean;
+  exchangePhotoId: string | null;
+  onToggleExchange: () => void;
+  onExchange: (photoId: string) => void;
 };
 
 function usedIds(signature: string) {
@@ -51,6 +55,10 @@ export const Library = memo(function Library({
   onCaption,
   onDate,
   onSelection,
+  exchanging,
+  exchangePhotoId,
+  onToggleExchange,
+  onExchange,
 }: LibraryProps) {
   const placed = usedIds(placedSignature);
   const pageOf = useMemo(() => {
@@ -298,6 +306,14 @@ export const Library = memo(function Library({
       >
         {picking ? "Done selecting" : "Select photos"}
       </button>
+      <button
+        type="button"
+        className={cn("btn mx-3 mt-1 w-[calc(100%-1.5rem)]", exchanging ? "btn-ink" : "btn-quiet")}
+        aria-pressed={exchanging}
+        onClick={onToggleExchange}
+      >
+        {exchanging ? (exchangePhotoId ? "Pick the other photo" : "Pick the first photo") : "Exchange frames"}
+      </button>
       {dupeReports.length > 0 && (
         <ul className="mt-1 grid gap-1 px-3 text-xs text-muted">
           {dupeReports.map((report) => (
@@ -403,6 +419,10 @@ export const Library = memo(function Library({
                     if (fromId) onReorder(fromId, photo.id);
                   }}
                   onClick={() => {
+                    if (exchanging) {
+                      onExchange(photo.id);
+                      return;
+                    }
                     if (!picking) {
                       onFocus(photo.id);
                       return;
@@ -433,7 +453,7 @@ export const Library = memo(function Library({
                   aria-label={`Place ${photo.name}`}
                 >
                   <img src={photo.thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} />
-                  {(picking && picked.includes(photo.id)) || selectedId === photo.id || placingId === photo.id || overId === photo.id ? (
+                  {(picking && picked.includes(photo.id)) || selectedId === photo.id || placingId === photo.id || overId === photo.id || exchangePhotoId === photo.id ? (
                     <span className="pointer-events-none absolute inset-0 z-20 border-[3px] border-accent" />
                   ) : null}
                   {photo.takenAt != null && (
