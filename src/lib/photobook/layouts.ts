@@ -221,5 +221,15 @@ export function withLayout(page: Page, layoutId: LayoutId): Page {
   const layout = LAYOUT_BY_ID[layoutId];
   const slots = (page.slots ?? []).slice(0, layout.slots).map((slot) => asSlot(slot));
   while (slots.length < layout.slots) slots.push(emptySlot());
-  return { ...page, layout: layoutId, slots, split: null, splitL: null, splitR: null, splitW: null };
+  const same = page.layout === layoutId;
+  return {
+    ...page,
+    layout: layoutId,
+    slots,
+    locked: page.locked === true ? true : undefined,
+    split: same ? (page.split ?? null) : null,
+    splitL: same ? (page.splitL ?? null) : null,
+    splitR: same ? (page.splitR ?? null) : null,
+    splitW: same ? (page.splitW ?? null) : null,
+  };
 }
