@@ -232,35 +232,27 @@ export const Library = memo(function Library({
   return (
     <div className="pane-tight flex h-full min-h-0 flex-col">
       {selectedId && (
-        <label className="block px-3 pb-1">
+        <div className="px-3 pb-1">
           <span className="text-xs text-muted">Caption</span>
-          <textarea
-            className="field mt-1 min-h-12 py-1 font-serif italic"
-            value={soloCaption}
-            maxLength={140}
-            rows={2}
-            placeholder="Caption for this photo"
-            onChange={(event) => {
-              const value = event.target.value;
-              setSoloCaption(value);
-              onCaption([selectedId], value);
-            }}
-          />
-        </label>
+          <div className="mt-1 flex items-end gap-1">
+            <textarea
+              className="field min-h-12 min-w-0 flex-1 py-1 font-serif italic"
+              value={soloCaption}
+              maxLength={140}
+              rows={2}
+              placeholder="Caption for this photo"
+              onChange={(event) => {
+                const value = event.target.value;
+                setSoloCaption(value);
+                onCaption([selectedId], value);
+              }}
+            />
+            <button type="button" className="btn btn-ink shrink-0 px-3" onClick={() => onCaption([selectedId], soloCaption)}>
+              OK
+            </button>
+          </div>
+        </div>
       )}
-      <button
-        type="button"
-        className={cn("btn mx-3 mt-1 w-[calc(100%-1.5rem)]", picking ? "btn-ink" : "btn-quiet")}
-        aria-pressed={picking}
-        onClick={() => {
-          setPicking((on) => !on);
-          setPicked([]);
-          setDraft("");
-          setDateDraft("");
-        }}
-      >
-        {picking ? "Done selecting" : "Select photos"}
-      </button>
       <div className="mt-1 flex gap-1 px-3" role="group" aria-label="Library filter">
         <FilterButton active={filter === "all"} onClick={() => onFilter("all")}>
           All
@@ -293,6 +285,19 @@ export const Library = memo(function Library({
       >
         Arrange selected by date
       </button>
+      <button
+        type="button"
+        className={cn("btn mx-3 mt-1 w-[calc(100%-1.5rem)]", picking ? "btn-ink" : "btn-quiet")}
+        aria-pressed={picking}
+        onClick={() => {
+          setPicking((on) => !on);
+          setPicked([]);
+          setDraft("");
+          setDateDraft("");
+        }}
+      >
+        {picking ? "Done selecting" : "Select photos"}
+      </button>
       {dupeReports.length > 0 && (
         <ul className="mt-1 grid gap-1 px-3 text-xs text-muted">
           {dupeReports.map((report) => (
@@ -310,19 +315,29 @@ export const Library = memo(function Library({
             <span className="text-sm text-muted">
               {picked.length === 0 ? "Select photos, then type one caption" : `Caption for ${picked.length} photos`}
             </span>
-            <textarea
-              className="field mt-2 min-h-16 py-2 font-serif italic"
-              value={draft}
-              maxLength={140}
-              rows={2}
-              placeholder="One caption for every selected photo"
-              disabled={picked.length === 0}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDraft(value);
-                onCaption(picked, value);
-              }}
-            />
+            <div className="mt-1 flex items-end gap-1">
+              <textarea
+                className="field min-h-16 min-w-0 flex-1 py-2 font-serif italic"
+                value={draft}
+                maxLength={140}
+                rows={2}
+                placeholder="One caption for every selected photo"
+                disabled={picked.length === 0}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDraft(value);
+                  onCaption(picked, value);
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-ink shrink-0 px-3"
+                disabled={picked.length === 0}
+                onClick={() => onCaption(picked, draft)}
+              >
+                OK
+              </button>
+            </div>
           </label>
           <label className="mt-2 block">
             <span className="text-sm text-muted">
