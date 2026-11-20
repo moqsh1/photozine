@@ -270,29 +270,44 @@ export const Library = memo(function Library({
         </FilterButton>
       </div>
       <div className="mt-1 flex gap-1 px-3">
-        <button type="button" className="btn btn-quiet min-w-0 flex-1" onClick={() => void checkDuplicates()} disabled={busy || checking != null || photos.length < 2}>
+        <button
+          type="button"
+          className="btn btn-quiet min-w-0 flex-1 px-1 py-1 text-center text-[11px] leading-tight whitespace-normal"
+          disabled={checking != null || picked.filter((id) => !placed.has(id)).length === 0}
+          onClick={() => onArrangeByDate(picked.filter((id) => !placed.has(id)))}
+        >
+          Arrange selected by date
+        </button>
+        <button
+          type="button"
+          className="btn btn-quiet min-w-0 flex-1 px-1 py-1 text-center text-[11px] leading-tight whitespace-normal"
+          onClick={() => void checkDuplicates()}
+          disabled={busy || checking != null || photos.length < 2}
+        >
           {checking != null ? `Checking ${checking}` : "Check duplicates"}
         </button>
         <button
           type="button"
-          className="btn btn-quiet"
-          disabled={dupes.length === 0 || checking != null}
+          className={cn("btn min-w-0 flex-1 px-1 py-1 text-center text-[11px] leading-tight whitespace-normal", exchanging ? "btn-ink" : "btn-quiet")}
+          aria-pressed={exchanging}
+          onClick={onToggleExchange}
+        >
+          {exchanging ? (exchangePhotoId ? "Pick the other photo" : "Pick the first photo") : "Exchange frames"}
+        </button>
+      </div>
+      {dupes.length > 0 && (
+        <button
+          type="button"
+          className="btn btn-quiet mx-3 mt-1 w-[calc(100%-1.5rem)]"
+          disabled={checking != null}
           onClick={() => {
             onDeleteMany(dupes.filter((id) => !placed.has(id)));
             setDupes([]);
           }}
         >
-          Remove {dupes.length > 0 ? dupes.length : ""}
+          Remove {dupes.length} extra copies
         </button>
-      </div>
-      <button
-        type="button"
-        className="btn btn-quiet mx-3 mt-1 w-[calc(100%-1.5rem)]"
-        disabled={checking != null || picked.filter((id) => !placed.has(id)).length === 0}
-        onClick={() => onArrangeByDate(picked.filter((id) => !placed.has(id)))}
-      >
-        Arrange selected by date
-      </button>
+      )}
       <button
         type="button"
         className={cn("btn mx-3 mt-1 w-[calc(100%-1.5rem)]", picking ? "btn-ink" : "btn-quiet")}
@@ -305,14 +320,6 @@ export const Library = memo(function Library({
         }}
       >
         {picking ? "Done selecting" : "Select photos"}
-      </button>
-      <button
-        type="button"
-        className={cn("btn mx-3 mt-1 w-[calc(100%-1.5rem)]", exchanging ? "btn-ink" : "btn-quiet")}
-        aria-pressed={exchanging}
-        onClick={onToggleExchange}
-      >
-        {exchanging ? (exchangePhotoId ? "Pick the other photo" : "Pick the first photo") : "Exchange frames"}
       </button>
       {dupeReports.length > 0 && (
         <ul className="mt-1 grid gap-1 px-3 text-xs text-muted">
