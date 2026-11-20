@@ -27,7 +27,6 @@ type LibraryProps = {
   onSelection: (ids: string[]) => void;
   exchanging: boolean;
   exchangePhotoId: string | null;
-  onToggleExchange: () => void;
   onExchange: (photoId: string) => void;
 };
 
@@ -57,7 +56,6 @@ export const Library = memo(function Library({
   onSelection,
   exchanging,
   exchangePhotoId,
-  onToggleExchange,
   onExchange,
 }: LibraryProps) {
   const placed = usedIds(placedSignature);
@@ -285,14 +283,6 @@ export const Library = memo(function Library({
           disabled={busy || checking != null || photos.length < 2}
         >
           {checking != null ? `Checking ${checking}` : "Check duplicates"}
-        </button>
-        <button
-          type="button"
-          className={cn("btn min-w-0 flex-1 px-1 py-1 text-center text-[11px] leading-tight whitespace-normal", exchanging ? "btn-ink" : "btn-quiet")}
-          aria-pressed={exchanging}
-          onClick={onToggleExchange}
-        >
-          {exchanging ? (exchangePhotoId ? "Pick the other photo" : "Pick the first photo") : "Exchange frames"}
         </button>
       </div>
       {dupes.length > 0 && (

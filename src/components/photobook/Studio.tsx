@@ -477,10 +477,6 @@ export function Studio() {
           ? (book.pages.find((item) => item.id === exchangeFrom.pageId)?.slots[exchangeFrom.index]?.photoId ?? null)
           : null
       }
-      onToggleExchange={() => {
-        setExchangeOn((on) => !on);
-        setExchangeFrom(null);
-      }}
       onExchange={(photoId) => {
         let found: { pageId: string; index: number } | null = null;
         for (const item of book.pages) {
@@ -768,6 +764,12 @@ export function Studio() {
                   setPickedPages([]);
                   setPagePicking(false);
                 }}
+                exchanging={exchangeOn}
+                exchangeReady={exchangeFrom != null}
+                onToggleExchange={() => {
+                  setExchangeOn((on) => !on);
+                  setExchangeFrom(null);
+                }}
               />
               </div>
             </aside>
@@ -783,10 +785,7 @@ export function Studio() {
           )}
           {paneOpen.preview && (
           <section className="relative flex h-full min-w-48 flex-1 flex-col">
-            <PaneTitle name="Preview" onHide={() => togglePane("preview")} />
-            <p className="shrink-0 py-1 text-center font-serif text-2xl font-bold tracking-wide text-ink">
-              {page ? `Page ${pageIndex + 1}` : ""}
-            </p>
+            <PaneTitle name="Preview" center={page ? String(pageIndex + 1) : ""} onHide={() => togglePane("preview")} />
             <div
               ref={stageRef}
               className="relative min-h-0 flex-1"
@@ -1098,11 +1097,12 @@ function readPaneWidths(): [number, number, number] {
   return [256, 320, 288];
 }
 
-function PaneTitle({ name, onHide }: { name: string; onHide: () => void }) {
+function PaneTitle({ name, onHide, center }: { name: string; onHide: () => void; center?: string }) {
   return (
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-2 py-1">
+    <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-line px-2 py-1">
       <h2 className="font-serif text-sm font-semibold tracking-wide">{name}</h2>
-      <button type="button" className="text-xs text-muted underline" onClick={onHide} aria-label={`Hide ${name}`}>
+      <p className="text-center font-serif text-sm font-semibold tracking-wide">{center}</p>
+      <button type="button" className="justify-self-end text-xs text-muted underline" onClick={onHide} aria-label={`Hide ${name}`}>
         Hide
       </button>
     </div>

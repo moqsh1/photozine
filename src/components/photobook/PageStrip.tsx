@@ -23,6 +23,9 @@ type PageStripProps = {
   onTogglePick: (id: string) => void;
   onPickMode: (on: boolean) => void;
   onClearPicked: () => void;
+  exchanging: boolean;
+  exchangeReady: boolean;
+  onToggleExchange: () => void;
 };
 
 export const PageStrip = memo(function PageStrip({
@@ -40,6 +43,9 @@ export const PageStrip = memo(function PageStrip({
   onTogglePick,
   onPickMode,
   onClearPicked,
+  exchanging,
+  exchangeReady,
+  onToggleExchange,
 }: PageStripProps) {
   const ratio = PAGE_INCHES[orientation];
   const [overPhoto, setOverPhoto] = useState<string | null>(null);
@@ -51,9 +57,17 @@ export const PageStrip = memo(function PageStrip({
   }, [activePageId]);
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex gap-2 px-3 pt-3">
-        <button type="button" className={cn("btn min-w-0 flex-1", picking ? "btn-ink" : "btn-quiet")} onClick={() => onPickMode(!picking)}>
+      <div className="flex gap-1 px-2 pt-2">
+        <button type="button" className={cn("btn min-w-0 flex-1 px-1", picking ? "btn-ink" : "btn-quiet")} onClick={() => onPickMode(!picking)}>
           {picking ? "Done" : "Select pages"}
+        </button>
+        <button
+          type="button"
+          className={cn("btn min-w-0 flex-1 px-1", exchanging ? "btn-ink" : "btn-quiet")}
+          aria-pressed={exchanging}
+          onClick={onToggleExchange}
+        >
+          {exchanging ? (exchangeReady ? "Pick the other" : "Pick the first") : "Exchange frames"}
         </button>
       </div>
       {picking && (
