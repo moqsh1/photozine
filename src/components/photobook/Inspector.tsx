@@ -117,7 +117,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
           })}
         </div>
         <button type="button" className="btn btn-quiet mt-1.5 w-full" onClick={props.onGridStack} disabled={!props.canGridStack}>
-          This + next: Grid and Stack
+          Two pages: stack + grid
         </button>
         <div className="mt-1.5 flex items-end gap-1">
           <label className="min-w-0 flex-1">
