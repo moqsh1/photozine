@@ -524,6 +524,8 @@ export function Studio() {
       selectedCount={pickedPhotos.length}
       hasPhoto={Boolean(slot?.photoId)}
       onLayout={book.setPageLayout}
+      onGridStack={book.makeGridAndStack}
+      canGridStack={pageIndex >= 0 && pageIndex < book.pages.length - 1 && !page?.locked && !book.pages[pageIndex + 1]?.locked}
       onSplit={book.setPageSplit}
       onCaption={(value) => page && slotIndex != null && book.setSlotCaption(page.id, slotIndex, value)}
       onDate={(iso) => page && slotIndex != null && book.setSlotDate(page.id, slotIndex, iso ? isoToStamp(iso) : null)}

@@ -88,6 +88,7 @@ type BookState = {
   movePageTo: (fromId: string, toId: string) => void;
   placePageAt: (pageNumber: number) => void;
   setPageLayout: (layout: LayoutId) => void;
+  makeGridAndStack: () => void;
   togglePageLock: (pageId?: string) => void;
   setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
@@ -1041,6 +1042,33 @@ export const useBook = create<BookState>((set, get) => {
       selectedSlot: selected != null && page && selected < page.slots.length ? selected : 0,
     });
     persistLater();
+  },
+  makeGridAndStack: () => {
+    const pages = get().pages;
+    const index = pages.findIndex((page) => page.id === get().activePageId);
+    if (index < 0 || index + 1 >= pages.length) {
+      flash("Select the first of the two pages.");
+      return;
+    }
+    const first = pages[index];
+    const second = pages[index + 1];
+    if (first.locked || second.locked) {
+      flash("This page is locked.");
+      return;
+    }
+    const photos = [...first.slots, ...second.slots].flatMap((slot) => (slot.photoId ? [{ ...slot }] : []));
+    if (photos.length < 2) {
+      flash("These two pages need at least two photos.");
+      return;
+    }
+    const grid = withLayout({ ...first, slots: photos.slice(0, 4) }, "four");
+    const stack = withLayout({ ...second, slots: photos.slice(4, 6) }, "two-rows");
+    const next = pages.slice();
+    next[index] = { ...grid, id: first.id, locked: false };
+    next[index + 1] = { ...stack, id: second.id, locked: false };
+    set({ pages: next, activePageId: first.id, selectedSlot: 0 });
+    persistLater();
+    flash("This page is a grid. The next page is a stack.");
   },
   togglePageLock: (pageId) => {
     const id = pageId || get().activePageId;
