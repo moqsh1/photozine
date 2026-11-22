@@ -293,6 +293,7 @@ function Frame({
           interactive
             ? (event) => {
                 if (!photo || event.button !== 0) return;
+                if (event.pointerType === "touch" && document.body.dataset.pinching === "1") return;
                 onSelectSlot?.(index);
                 if (placing) return;
                 const frame = frameRef.current;
@@ -308,6 +309,10 @@ function Frame({
                 const start = drag.current;
                 const frame = frameRef.current;
                 if (!start || !frame || !photo) return;
+                if (event.pointerType === "touch" && document.body.dataset.pinching === "1") {
+                  drag.current = null;
+                  return;
+                }
                 const dx = event.clientX - start.x;
                 const dy = event.clientY - start.y;
                 if (start.mode === "pending" && Math.abs(dx) + Math.abs(dy) < 8) return;

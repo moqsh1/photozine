@@ -76,7 +76,53 @@ export function Studio() {
   const [paneW, setPaneW] = useState<[number, number, number]>(readPaneWidths);
   const paneWRef = useRef(paneW);
   paneWRef.current = paneW;
+  const [appZoom, setAppZoom] = useState(1);
+  const appZoomRef = useRef(1);
   const [paneOpen, setPaneOpen] = useState(readPaneOpen);
+  useEffect(() => {
+    const dist = (touches: TouchList) => {
+      const a = touches[0];
+      const b = touches[1];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+    let startDist = 0;
+    let startZoom = 1;
+    const mark = (on: boolean) => {
+      document.body.dataset.pinching = on ? "1" : "";
+    };
+    const start = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return;
+      startDist = dist(event.touches);
+      startZoom = appZoomRef.current;
+      mark(true);
+    };
+    const move = (event: TouchEvent) => {
+      if (event.touches.length !== 2 || startDist <= 0) return;
+      event.preventDefault();
+      const next = Math.min(3, Math.max(0.5, startZoom * (dist(event.touches) / startDist)));
+      appZoomRef.current = next;
+      setAppZoom(next);
+    };
+    const end = (event: TouchEvent) => {
+      if (event.touches.length >= 2) return;
+      startDist = 0;
+      mark(false);
+      const snapped = Math.abs(appZoomRef.current - 1) < 0.04 ? 1 : appZoomRef.current;
+      appZoomRef.current = snapped;
+      setAppZoom(snapped);
+    };
+    window.addEventListener("touchstart", start, { passive: true });
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", end);
+    window.addEventListener("touchcancel", end);
+    return () => {
+      mark(false);
+      window.removeEventListener("touchstart", start);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", end);
+      window.removeEventListener("touchcancel", end);
+    };
+  }, []);
   useEffect(() => {
     localStorage.setItem("pz-panes", JSON.stringify(paneW));
   }, [paneW]);
@@ -575,7 +621,8 @@ export function Studio() {
   );
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-bg text-ink">
+    <div className="h-dvh overflow-auto bg-bg text-ink">
+    <div className="flex h-dvh flex-col overflow-hidden" style={{ zoom: appZoom }}>
       <header className="workspace-pan no-print flex shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-2 sm:px-4">
         <div className="flex flex-col leading-none">
           <div className="flex items-center gap-2">
@@ -1054,6 +1101,7 @@ export function Studio() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }
