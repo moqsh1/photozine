@@ -121,7 +121,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
           Two pages: stack + grid
         </button>
         <button type="button" className="btn btn-quiet mt-1 w-full" onClick={props.onExchangePages} disabled={!props.canGridStack}>
-          Exchange these two pages
+          Banner and stack: exchange
         </button>
         <div className="mt-1.5 flex items-end gap-1">
           <label className="min-w-0 flex-1">

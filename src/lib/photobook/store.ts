@@ -1123,29 +1123,36 @@ export const useBook = create<BookState>((set, get) => {
       flash("This page is locked.");
       return;
     }
-    const copySlots = (slots: Slot[]) => slots.map((slot) => ({ ...slot, adjust: slot.adjust ? { ...slot.adjust } : undefined }));
+    const bannerIndex = first.layout === "three-banner" ? indexes[0] : second.layout === "three-banner" ? indexes[1] : -1;
+    const stackIndex = first.layout === "two-rows" ? indexes[0] : second.layout === "two-rows" ? indexes[1] : -1;
+    if (bannerIndex < 0 || stackIndex < 0 || bannerIndex === stackIndex) {
+      flash("Select one banner page and one stack page.");
+      return;
+    }
+    const landscape = (slot: Slot) => {
+      const photo = get().photos.find((item) => item.id === slot.photoId);
+      if (!photo) return false;
+      const turned = (slot.turn ?? 0) % 2 === 1;
+      const w = turned ? photo.h : photo.w;
+      const h = turned ? photo.w : photo.h;
+      return w > h;
+    };
+    const banner = pages[bannerIndex];
+    const stack = pages[stackIndex];
+    const bannerPhotos = banner.slots.flatMap((slot) => (slot.photoId ? [{ ...slot, adjust: slot.adjust ? { ...slot.adjust } : undefined }] : []));
+    const stackPhotos = stack.slots.flatMap((slot) => (slot.photoId ? [{ ...slot, adjust: slot.adjust ? { ...slot.adjust } : undefined }] : []));
+    const kept = bannerPhotos.find(landscape) ?? bannerPhotos[0];
+    const portraits = bannerPhotos.filter((slot) => slot !== kept);
+    const stay = stackPhotos.find(landscape) ?? stackPhotos[0];
+    const partner = stackPhotos.find((slot) => slot !== stay);
+    const stackSlots = [kept, partner].flatMap((slot) => (slot ? [slot] : []));
+    const bannerSlots = [stay, ...portraits].flatMap((slot) => (slot ? [slot] : []));
     const next = pages.slice();
-    next[indexes[0]] = {
-      ...first,
-      layout: second.layout,
-      slots: copySlots(second.slots),
-      split: second.split ?? null,
-      splitL: second.splitL ?? null,
-      splitR: second.splitR ?? null,
-      splitW: second.splitW ?? null,
-    };
-    next[indexes[1]] = {
-      ...second,
-      layout: first.layout,
-      slots: copySlots(first.slots),
-      split: first.split ?? null,
-      splitL: first.splitL ?? null,
-      splitR: first.splitR ?? null,
-      splitW: first.splitW ?? null,
-    };
-    set({ pages: next, activePageId: first.id, selectedSlot: 0 });
+    next[bannerIndex] = { ...withLayout({ ...banner, slots: stackSlots }, "two-rows"), id: banner.id, locked: false };
+    next[stackIndex] = { ...withLayout({ ...stack, slots: bannerSlots }, "three-banner"), id: stack.id, locked: false };
+    set({ pages: next, activePageId: banner.id, selectedSlot: 0 });
     persistLater();
-    flash("The two pages exchanged layouts.");
+    flash("The banner landscape stayed. Its portraits moved to the other page.");
   },
   togglePageLock: (pageId) => {
     const id = pageId || get().activePageId;
