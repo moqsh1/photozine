@@ -571,6 +571,7 @@ export function Studio() {
       hasPhoto={Boolean(slot?.photoId)}
       onLayout={book.setPageLayout}
       onGridStack={() => book.makeGridAndStack(pickedPages)}
+      onExchangePages={() => book.exchangePageLayouts(pickedPages)}
       canGridStack={
         pickedPages.length >= 2
           ? pickedPages.filter((id) => book.pages.some((item) => item.id === id && !item.locked)).length >= 2

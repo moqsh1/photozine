@@ -32,6 +32,7 @@ type InspectorProps = {
   hasPhoto: boolean;
   onLayout: (layout: LayoutId) => void;
   onGridStack: () => void;
+  onExchangePages: () => void;
   canGridStack: boolean;
   onSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   onCaption: (value: string) => void;
@@ -118,6 +119,9 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
         </div>
         <button type="button" className="btn btn-quiet mt-1.5 w-full" onClick={props.onGridStack} disabled={!props.canGridStack}>
           Two pages: stack + grid
+        </button>
+        <button type="button" className="btn btn-quiet mt-1 w-full" onClick={props.onExchangePages} disabled={!props.canGridStack}>
+          Exchange these two pages
         </button>
         <div className="mt-1.5 flex items-end gap-1">
           <label className="min-w-0 flex-1">

@@ -89,6 +89,7 @@ type BookState = {
   placePageAt: (pageNumber: number) => void;
   setPageLayout: (layout: LayoutId) => void;
   makeGridAndStack: (pageIds?: string[]) => void;
+  exchangePageLayouts: (pageIds?: string[]) => void;
   togglePageLock: (pageId?: string) => void;
   setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
@@ -1097,6 +1098,54 @@ export const useBook = create<BookState>((set, get) => {
     set({ pages: next, activePageId: first.id, selectedSlot: 0 });
     persistLater();
     flash("Landscapes are on the stack. Portraits are on the grid.");
+  },
+  exchangePageLayouts: (pageIds) => {
+    const pages = get().pages;
+    let indexes: number[] = [];
+    if (pageIds && pageIds.length >= 2) {
+      indexes = pageIds
+        .map((id) => pages.findIndex((page) => page.id === id))
+        .filter((index) => index >= 0)
+        .sort((a, b) => a - b)
+        .slice(0, 2);
+    }
+    if (indexes.length < 2) {
+      const index = pages.findIndex((page) => page.id === get().activePageId);
+      if (index >= 0 && index + 1 < pages.length) indexes = [index, index + 1];
+    }
+    if (indexes.length < 2) {
+      flash("Select the two pages.");
+      return;
+    }
+    const first = pages[indexes[0]];
+    const second = pages[indexes[1]];
+    if (first.locked || second.locked) {
+      flash("This page is locked.");
+      return;
+    }
+    const copySlots = (slots: Slot[]) => slots.map((slot) => ({ ...slot, adjust: slot.adjust ? { ...slot.adjust } : undefined }));
+    const next = pages.slice();
+    next[indexes[0]] = {
+      ...first,
+      layout: second.layout,
+      slots: copySlots(second.slots),
+      split: second.split ?? null,
+      splitL: second.splitL ?? null,
+      splitR: second.splitR ?? null,
+      splitW: second.splitW ?? null,
+    };
+    next[indexes[1]] = {
+      ...second,
+      layout: first.layout,
+      slots: copySlots(first.slots),
+      split: first.split ?? null,
+      splitL: first.splitL ?? null,
+      splitR: first.splitR ?? null,
+      splitW: first.splitW ?? null,
+    };
+    set({ pages: next, activePageId: first.id, selectedSlot: 0 });
+    persistLater();
+    flash("The two pages exchanged layouts.");
   },
   togglePageLock: (pageId) => {
     const id = pageId || get().activePageId;
