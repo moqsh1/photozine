@@ -88,8 +88,8 @@ type BookState = {
   movePageTo: (fromId: string, toId: string) => void;
   placePageAt: (pageNumber: number) => void;
   setPageLayout: (layout: LayoutId) => void;
-  makeGridAndStack: (pageIds?: string[]) => void;
-  exchangePageLayouts: (pageIds?: string[]) => void;
+  makeGridAndStack: (pageIds?: string[]) => boolean;
+  exchangePageLayouts: (pageIds?: string[]) => boolean;
   togglePageLock: (pageId?: string) => void;
   setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
@@ -101,7 +101,7 @@ type BookState = {
   pasteSlot: () => void;
   undo: () => void;
   redo: () => void;
-  swapSlots: (fromPageId: string, fromIndex: number, toPageId: string, toIndex: number) => void;
+  swapSlots: (fromPageId: string, fromIndex: number, toPageId: string, toIndex: number) => boolean;
   reorderPhotos: (fromId: string, toId: string) => void;
   setSlotCaption: (pageId: string, index: number, caption: string) => void;
   clearPageCaptions: () => void;
@@ -1060,18 +1060,18 @@ export const useBook = create<BookState>((set, get) => {
     }
     if (indexes.length < 2) {
       flash("Select the two banner pages.");
-      return;
+      return false;
     }
     const first = pages[indexes[0]];
     const second = pages[indexes[1]];
     if (first.locked || second.locked) {
       flash("This page is locked.");
-      return;
+      return false;
     }
     const taken = [...first.slots, ...second.slots].flatMap((slot) => (slot.photoId ? [{ ...slot }] : []));
     if (taken.length < 2) {
       flash("These two pages need at least two photos.");
-      return;
+      return false;
     }
     const landscape = (slot: Slot) => {
       const photo = get().photos.find((item) => item.id === slot.photoId);
@@ -1095,9 +1095,10 @@ export const useBook = create<BookState>((set, get) => {
     const next = pages.slice();
     next[indexes[0]] = { ...stack, id: first.id, locked: false };
     next[indexes[1]] = { ...grid, id: second.id, locked: false };
-    set({ pages: next, activePageId: first.id, selectedSlot: 0 });
+    set({ pages: next, activePageId: first.id, selectedSlot: null });
     persistLater();
     flash("Landscapes are on the stack. Portraits are on the grid.");
+    return true;
   },
   exchangePageLayouts: (pageIds) => {
     const pages = get().pages;
@@ -1115,19 +1116,19 @@ export const useBook = create<BookState>((set, get) => {
     }
     if (indexes.length < 2) {
       flash("Select the two pages.");
-      return;
+      return false;
     }
     const first = pages[indexes[0]];
     const second = pages[indexes[1]];
     if (first.locked || second.locked) {
       flash("This page is locked.");
-      return;
+      return false;
     }
     const bannerIndex = first.layout === "three-banner" ? indexes[0] : second.layout === "three-banner" ? indexes[1] : -1;
     const stackIndex = first.layout === "two-rows" ? indexes[0] : second.layout === "two-rows" ? indexes[1] : -1;
     if (bannerIndex < 0 || stackIndex < 0 || bannerIndex === stackIndex) {
       flash("Select one banner page and one stack page.");
-      return;
+      return false;
     }
     const landscape = (slot: Slot) => {
       const photo = get().photos.find((item) => item.id === slot.photoId);
@@ -1150,9 +1151,10 @@ export const useBook = create<BookState>((set, get) => {
     const next = pages.slice();
     next[bannerIndex] = { ...withLayout({ ...banner, slots: stackSlots }, "two-rows"), id: banner.id, locked: false };
     next[stackIndex] = { ...withLayout({ ...stack, slots: bannerSlots }, "three-banner"), id: stack.id, locked: false };
-    set({ pages: next, activePageId: banner.id, selectedSlot: 0 });
+    set({ pages: next, activePageId: banner.id, selectedSlot: null });
     persistLater();
     flash("The banner landscape stayed. Its portraits moved to the other page.");
+    return true;
   },
   togglePageLock: (pageId) => {
     const id = pageId || get().activePageId;
@@ -1350,16 +1352,17 @@ export const useBook = create<BookState>((set, get) => {
     const pages = get().pages.map((page) => ({ ...page, slots: page.slots.map((slot) => ({ ...slot })) }));
     const from = pages.find((page) => page.id === fromPageId);
     const to = pages.find((page) => page.id === toPageId);
-    if (!from?.slots[fromIndex] || !to?.slots[toIndex]) return;
+    if (!from?.slots[fromIndex] || !to?.slots[toIndex]) return false;
     if (from.locked || to.locked) {
       flash("This page is locked.");
-      return;
+      return false;
     }
     const temp = from.slots[fromIndex];
     from.slots[fromIndex] = to.slots[toIndex];
     to.slots[toIndex] = temp;
-    set({ pages, activePageId: toPageId, selectedSlot: toIndex });
+    set({ pages, activePageId: toPageId, selectedSlot: null });
     persistLater();
+    return true;
   },
   reorderPhotos: (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;

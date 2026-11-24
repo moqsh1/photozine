@@ -71,6 +71,13 @@ export function Studio() {
   const [pagePicking, setPagePicking] = useState(false);
   const [pickedPages, setPickedPages] = useState<string[]>([]);
   const onPhotoSelection = useCallback((ids: string[]) => setPickedPhotos(ids), []);
+  function releasePicks() {
+    setExchangeOn(false);
+    setExchangeFrom(null);
+    setPagePicking(false);
+    setPickedPages([]);
+    book.clearSlotSelection();
+  }
   const pdfBlob = useRef<Blob | null>(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const [paneW, setPaneW] = useState<[number, number, number]>(readPaneWidths);
@@ -546,8 +553,7 @@ export function Studio() {
           setExchangeFrom(null);
           return;
         }
-        book.swapSlots(exchangeFrom.pageId, exchangeFrom.index, found.pageId, found.index);
-        setExchangeFrom(null);
+        if (book.swapSlots(exchangeFrom.pageId, exchangeFrom.index, found.pageId, found.index)) releasePicks();
       }}
     />
   );
@@ -570,8 +576,12 @@ export function Studio() {
       selectedCount={pickedPhotos.length}
       hasPhoto={Boolean(slot?.photoId)}
       onLayout={book.setPageLayout}
-      onGridStack={() => book.makeGridAndStack(pickedPages)}
-      onExchangePages={() => book.exchangePageLayouts(pickedPages)}
+      onGridStack={() => {
+        if (book.makeGridAndStack(pickedPages)) releasePicks();
+      }}
+      onExchangePages={() => {
+        if (book.exchangePageLayouts(pickedPages)) releasePicks();
+      }}
       canGridStack={
         pickedPages.length >= 2
           ? pickedPages.filter((id) => book.pages.some((item) => item.id === id && !item.locked)).length >= 2
@@ -864,8 +874,7 @@ export function Studio() {
                         setExchangeFrom(null);
                         return;
                       }
-                      book.swapSlots(exchangeFrom.pageId, exchangeFrom.index, target.pageId, target.index);
-                      setExchangeFrom(null);
+                      if (book.swapSlots(exchangeFrom.pageId, exchangeFrom.index, target.pageId, target.index)) releasePicks();
                     }}
                     onDeselect={book.clearSlotSelection}
                     onCommitPan={(index, panX, panY) => book.setSlotCrop(page.id, index, { panX, panY })}
