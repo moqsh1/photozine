@@ -132,8 +132,8 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
         <button type="button" className="btn btn-quiet mt-1 w-full" onClick={props.onExchangePages} disabled={!props.canGridStack}>
           Banner and stack: exchange
         </button>
-        <button type="button" className="btn btn-ink mt-1 w-full" onClick={props.onArrangeFrom} disabled={!props.page || props.page.locked}>
-          Auto arrange photos from this date
+        <button type="button" className="btn btn-ink mt-1 w-full" onClick={props.onArrangeFrom} disabled={!props.page}>
+          Auto arrange photos from this page
         </button>
         <div className="mt-1.5 flex items-end gap-1">
           <label className="min-w-0 flex-1">

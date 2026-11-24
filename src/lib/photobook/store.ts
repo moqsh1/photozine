@@ -1355,18 +1355,14 @@ export const useBook = create<BookState>((set, get) => {
       flash("Select a page.");
       return;
     }
-    if (pages[start].locked) {
-      flash("This page is locked.");
-      return;
-    }
     const before = pages.slice(0, start);
     const from = pages.slice(start);
     const seen = new Set<string>();
     for (const page of before) {
       for (const slot of page.slots) if (slot.photoId) seen.add(slot.photoId);
     }
-    for (const page of from) {
-      if (!page.locked) continue;
+    const locked = from.filter((page) => page.locked);
+    for (const page of locked) {
       for (const slot of page.slots) if (slot.photoId) seen.add(slot.photoId);
     }
     const loose: Slot[] = [];
@@ -1378,11 +1374,21 @@ export const useBook = create<BookState>((set, get) => {
         loose.push(slot);
       }
     }
-    if (loose.length === 0) {
+    if (loose.length === 0 && locked.length < 2) {
       flash("No photos to arrange from this page.");
       return;
     }
     const photoAt = new Map(get().photos.map((photo) => [photo.id, photo.takenAt]));
+    const stampOf = (page: Page) => {
+      let best: number | null = null;
+      for (const slot of page.slots) {
+        if (!slot.photoId) continue;
+        const at = slot.takenAt ?? photoAt.get(slot.photoId) ?? null;
+        if (at == null) continue;
+        if (best == null || at < best) best = at;
+      }
+      return best;
+    };
     const taken = new Map(loose.map((slot) => [slot.photoId ?? "", slot.takenAt ?? photoAt.get(slot.photoId ?? "") ?? null]));
     const ids = sortIdsByDate(
       loose.flatMap((slot) => (slot.photoId ? [slot.photoId] : [])),
@@ -1390,12 +1396,37 @@ export const useBook = create<BookState>((set, get) => {
     );
     const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
     const slotOf = new Map(loose.map((slot) => [slot.photoId, slot]));
-    const flowing = pagesInDateOrder(from, ids, get().orientation === "landscape", (id) => {
-      const landscape = shape.get(id) === true;
-      const turn = slotOf.get(id)?.turn ?? 0;
-      return turn % 2 === 1 ? !landscape : landscape;
-    });
-    const next = [...before, ...mergeLocked(from, flowing)];
+    const flowing =
+      ids.length === 0
+        ? []
+        : pagesInDateOrder(from, ids, get().orientation === "landscape", (id) => {
+            const landscape = shape.get(id) === true;
+            const turn = slotOf.get(id)?.turn ?? 0;
+            return turn % 2 === 1 ? !landscape : landscape;
+          });
+    const lockedOrder = locked
+      .map((page, index) => ({ page, index, at: stampOf(page) }))
+      .sort((a, b) => {
+        if (a.at == null && b.at == null) return a.index - b.index;
+        if (a.at == null) return 1;
+        if (b.at == null) return -1;
+        return a.at - b.at || a.index - b.index;
+      });
+    const merged: Page[] = [];
+    let lockedAt = 0;
+    for (const page of flowing) {
+      const at = stampOf(page);
+      while (lockedAt < lockedOrder.length) {
+        const item = lockedOrder[lockedAt];
+        const placeBefore = item.at != null && (at == null || item.at <= at);
+        if (!placeBefore) break;
+        merged.push(item.page);
+        lockedAt += 1;
+      }
+      merged.push(page);
+    }
+    while (lockedAt < lockedOrder.length) merged.push(lockedOrder[lockedAt++].page);
+    const next = [...before, ...merged];
     const kept = next.some((page) => page.id === pages[start].id);
     set({
       pages: next,
