@@ -95,6 +95,7 @@ type BookState = {
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
   addPhotoToPage: (pageId: string, photoId: string) => void;
   arrangeByDate: (ids: string[]) => void;
+  arrangeFromPage: () => void;
   clearSlot: (pageId: string, index: number) => void;
   copySlot: () => void;
   cutSlot: () => void;
@@ -1346,6 +1347,63 @@ export const useBook = create<BookState>((set, get) => {
     const active = pages.find((page) => page.slots.some((slot) => slot.photoId && fresh.has(slot.photoId)));
     set({ pages, activePageId: active?.id ?? get().activePageId, selectedSlot: 0 });
     persistLater();
+  },
+  arrangeFromPage: () => {
+    const pages = get().pages;
+    const start = pages.findIndex((page) => page.id === get().activePageId);
+    if (start < 0) {
+      flash("Select a page.");
+      return;
+    }
+    if (pages[start].locked) {
+      flash("This page is locked.");
+      return;
+    }
+    const before = pages.slice(0, start);
+    const from = pages.slice(start);
+    const seen = new Set<string>();
+    for (const page of before) {
+      for (const slot of page.slots) if (slot.photoId) seen.add(slot.photoId);
+    }
+    for (const page of from) {
+      if (!page.locked) continue;
+      for (const slot of page.slots) if (slot.photoId) seen.add(slot.photoId);
+    }
+    const loose: Slot[] = [];
+    for (const page of from) {
+      if (page.locked) continue;
+      for (const slot of page.slots) {
+        if (!slot.photoId || seen.has(slot.photoId)) continue;
+        seen.add(slot.photoId);
+        loose.push(slot);
+      }
+    }
+    if (loose.length === 0) {
+      flash("No photos to arrange from this page.");
+      return;
+    }
+    const photoAt = new Map(get().photos.map((photo) => [photo.id, photo.takenAt]));
+    const taken = new Map(loose.map((slot) => [slot.photoId ?? "", slot.takenAt ?? photoAt.get(slot.photoId ?? "") ?? null]));
+    const ids = sortIdsByDate(
+      loose.flatMap((slot) => (slot.photoId ? [slot.photoId] : [])),
+      taken,
+    );
+    const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+    const slotOf = new Map(loose.map((slot) => [slot.photoId, slot]));
+    const flowing = pagesInDateOrder(from, ids, get().orientation === "landscape", (id) => {
+      const landscape = shape.get(id) === true;
+      const turn = slotOf.get(id)?.turn ?? 0;
+      return turn % 2 === 1 ? !landscape : landscape;
+    });
+    const next = [...before, ...mergeLocked(from, flowing)];
+    const kept = next.some((page) => page.id === pages[start].id);
+    set({
+      pages: next,
+      activePageId: kept ? pages[start].id : (next[start]?.id ?? get().activePageId),
+      selectedSlot: null,
+    });
+    persistLater();
+    flash(`Arranged ${ids.length} photos from this page onward.`);
   },
   clearSlot: (pageId, index) => {
     if (pageIsLocked(get().pages, pageId)) {

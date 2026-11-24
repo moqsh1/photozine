@@ -582,6 +582,7 @@ export function Studio() {
       onExchangePages={() => {
         if (book.exchangePageLayouts(pickedPages)) releasePicks();
       }}
+      onArrangeFrom={book.arrangeFromPage}
       canGridStack={
         pickedPages.length >= 2
           ? pickedPages.filter((id) => book.pages.some((item) => item.id === id && !item.locked)).length >= 2
