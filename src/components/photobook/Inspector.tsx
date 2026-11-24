@@ -74,9 +74,17 @@ type InspectorProps = {
 export const Inspector = memo(function Inspector(props: InspectorProps) {
   const size = PAGE_INCHES[props.orientation];
   const [spot, setSpot] = useState(String(props.pageIndex + 1));
+  const [dateDraft, setDateDraft] = useState(props.dateIso);
   useEffect(() => {
     setSpot(String(props.pageIndex + 1));
   }, [props.pageIndex, props.page?.id]);
+  useEffect(() => {
+    setDateDraft(props.dateIso);
+  }, [props.dateIso, props.photo?.id]);
+  function applyDate() {
+    if (!props.hasPhoto || dateDraft === props.dateIso) return;
+    props.onDate(dateDraft);
+  }
   return (
     <div className="pane-tight scroll-thin flex h-full min-h-0 flex-col overflow-y-auto text-[13px]">
       <section className="px-3 pt-2 pb-2">
@@ -227,12 +235,20 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
             </button>
             <label className="mt-3 block">
               <span className="text-sm text-muted">Date on this frame</span>
-              <input
-                className="field mt-2"
-                type="date"
-                value={props.dateIso}
-                onChange={(event) => props.onDate(event.target.value)}
-              />
+              <div className="mt-2 flex items-end gap-1">
+                <input
+                  className="field min-w-0 flex-1"
+                  type="date"
+                  value={dateDraft}
+                  onChange={(event) => setDateDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") applyDate();
+                  }}
+                />
+                <button type="button" className="btn btn-ink shrink-0 px-3" disabled={!props.hasPhoto} onClick={applyDate}>
+                  OK
+                </button>
+              </div>
             </label>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" className="btn btn-quiet" onClick={props.onCenter}>
