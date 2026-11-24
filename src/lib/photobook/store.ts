@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { mergeAdjust, readAdjust, type Adjust } from "@/lib/photobook/adjust";
-import { captionForDate, dateFromName, formatHindiDate, readTakenAt } from "@/lib/photobook/date";
+import { captionForDate, dateFromName, formatHindiDate, readTakenAt, stampToIso } from "@/lib/photobook/date";
 import { decodeImage, measureImage, prettyName } from "@/lib/photobook/decode";
 import { pullNewerBook, queueFolderSync } from "@/lib/photobook/sync";
 import {
@@ -431,10 +431,11 @@ function packGroups(
   ids: string[],
   isLandscape: (id: string) => boolean,
   pageIsLandscape: boolean,
+  dayOf?: (id: string) => string | null,
 ): { ids: string[]; layout: LayoutId }[] {
   const queue = ids.slice();
   const groups: { ids: string[]; layout: LayoutId }[] = [];
-  while (queue.length > 0) groups.push(takeGroup(queue, isLandscape, pageIsLandscape));
+  while (queue.length > 0) groups.push(takeGroup(queue, isLandscape, pageIsLandscape, dayOf));
   return groups;
 }
 
@@ -451,10 +452,17 @@ function takeGroup(
   queue: string[],
   isLandscape: (id: string) => boolean,
   pageIsLandscape: boolean,
+  dayOf?: (id: string) => string | null,
 ): { ids: string[]; layout: LayoutId } {
   const land = (index: number) => index < queue.length && isLandscape(queue[index]);
   const pair: LayoutId = pageIsLandscape ? "two-cols" : "two-rows";
-  if (queue.length >= 4 && !land(0) && !land(1) && !land(2) && !land(3)) {
+  if (dayOf && !land(0)) {
+    const day = dayOf(queue[0]);
+    let same = 0;
+    while (same < queue.length && !land(same) && dayOf(queue[same]) === day) same += 1;
+    if (same >= 4) return { ids: queue.splice(0, 4), layout: "four" };
+    if (same === 3 && queue.length >= 4 && !land(3)) return { ids: queue.splice(0, 4), layout: "four" };
+  } else if (queue.length >= 4 && !land(0) && !land(1) && !land(2) && !land(3)) {
     return { ids: queue.splice(0, 4), layout: "four" };
   }
   if (land(0) && land(1)) return { ids: queue.splice(0, 2), layout: pair };
@@ -485,6 +493,32 @@ function takeGroup(
   }
   const id = queue.shift() ?? "";
   return { ids: [id], layout: isLandscape(id) ? "half" : "one" };
+}
+
+function pickGrid(current: Slot[], later: Slot[], isLandscape: (slot: Slot) => boolean): { head: Slot[]; rest: Slot[] } {
+  const here = current.flatMap((slot) => (slot.photoId ? [{ ...slot }] : []));
+  const carried = [...here, ...later];
+  const anchor = here.find((slot) => !isLandscape(slot)) ?? carried.find((slot) => !isLandscape(slot));
+  const anchorDay = anchor?.takenAt != null ? stampToIso(anchor.takenAt) : null;
+  const same: Slot[] = [];
+  const other: Slot[] = [];
+  for (const slot of carried) {
+    if (!slot.photoId || isLandscape(slot)) continue;
+    const day = slot.takenAt != null ? stampToIso(slot.takenAt) : null;
+    if (day === anchorDay) same.push(slot);
+    else other.push(slot);
+  }
+  const chosen: Array<Slot | undefined> = [undefined, undefined, undefined, undefined];
+  for (let index = 0; index < 3 && same.length > 0; index += 1) chosen[index] = same.shift();
+  if (same.length > 0) chosen[3] = same.shift();
+  else if (anchorDay != null && chosen.some(Boolean)) {
+    const later = other.find((slot) => slot.takenAt != null && stampToIso(slot.takenAt) > anchorDay);
+    if (later) chosen[3] = later;
+  }
+  const used = new Set(chosen.flatMap((slot) => (slot?.photoId ? [slot.photoId] : [])));
+  const head = chosen.map((slot) => slot ?? emptySlot());
+  const rest = carried.filter((slot) => slot.photoId && !used.has(slot.photoId));
+  return { head, rest };
 }
 
 function pickOneLandscape(carried: Slot[], layout: LayoutId, isLandscape: (id: string) => boolean): { head: Slot[]; rest: Slot[] } {
@@ -1010,6 +1044,16 @@ export const useBook = create<BookState>((set, get) => {
         const picked = pickOneLandscape(carried, layout, (photoId) => shape.get(photoId) === true);
         headSlots = picked.head;
         rest = picked.rest;
+      } else if (layout === "four") {
+        const wide = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+        const portraitPage = pickGrid(current[index].slots, later, (slot) => {
+          if (!slot.photoId) return false;
+          const landscape = wide.get(slot.photoId) === true;
+          return (slot.turn ?? 0) % 2 === 1 ? !landscape : landscape;
+        });
+        headSlots = portraitPage.head;
+        rest = portraitPage.rest;
+        if (!headSlots.some((slot) => slot.photoId)) flash("A grid keeps portrait photos only.");
       } else {
         const carried = [
           ...current[index].slots.flatMap((slot) => (slot.photoId ? [{ ...slot }] : [])),
@@ -1020,12 +1064,21 @@ export const useBook = create<BookState>((set, get) => {
       }
       const head: Page = { ...current[index], layout, slots: headSlots, split: null, splitL: null, splitR: null, splitW: null };
       const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+      const byPhoto = new Map(rest.map((slot) => [slot.photoId, slot]));
       const groups = packGroups(
         rest.flatMap((slot) => (slot.photoId ? [slot.photoId] : [])),
-        (photoId) => shape.get(photoId) === true,
+        (photoId) => {
+          const slot = byPhoto.get(photoId);
+          const landscape = shape.get(photoId) === true;
+          if (!slot) return landscape;
+          return (slot.turn ?? 0) % 2 === 1 ? !landscape : landscape;
+        },
         get().orientation === "landscape",
+        (photoId) => {
+          const slot = byPhoto.get(photoId);
+          return slot?.takenAt != null ? stampToIso(slot.takenAt) : null;
+        },
       );
-      const byPhoto = new Map(rest.map((slot) => [slot.photoId, slot]));
       const tail = groups.map((group) => {
         const page = makePage(group.layout);
         page.slots = page.slots.map((slot, slotIndex) => {
