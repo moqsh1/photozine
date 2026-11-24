@@ -79,6 +79,16 @@ export const Library = memo(function Library({
   const [dupes, setDupes] = useState<string[]>([]);
   const [dupeReports, setDupeReports] = useState<{ times: number; pages: number[]; loose: number; ids: string[] }[]>([]);
   const [checking, setChecking] = useState<string | null>(null);
+  const [shaped, setShaped] = useState(() => {
+    try {
+      return localStorage.getItem("pz-library-shape") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem("pz-library-shape", shaped ? "1" : "0");
+  }, [shaped]);
   useEffect(() => {
     onSelection(picking ? picked : []);
   }, [onSelection, picking, picked]);
@@ -237,6 +247,16 @@ export const Library = memo(function Library({
 
   return (
     <div className="pane-tight flex h-full min-h-0 flex-col">
+      <div className="px-3 pt-1">
+        <button
+          type="button"
+          className={cn("btn w-full", shaped ? "btn-ink" : "btn-quiet")}
+          aria-pressed={shaped}
+          onClick={() => setShaped((on) => !on)}
+        >
+          {shaped ? "Actual shape" : "Square"}
+        </button>
+      </div>
       {selectedId && (
         <div className="px-3 pb-1">
           <span className="text-xs text-muted">Caption</span>
@@ -402,7 +422,7 @@ export const Library = memo(function Library({
                 <h3 className="mb-1 font-serif text-sm text-ink">{group.label}</h3>
                 <ul className="grid grid-cols-3 gap-1">
                   {group.photos.map((photo) => (
-              <li key={photo.id} className="thumb-cell" data-photo-id={photo.id}>
+              <li key={photo.id} className={cn("thumb-cell", shaped && "self-start")} data-photo-id={photo.id}>
                 <button
                   type="button"
                   draggable
@@ -451,14 +471,12 @@ export const Library = memo(function Library({
                       return next;
                     });
                   }}
-                  className={cn(
-                    "relative aspect-square w-full overflow-hidden bg-well",
-                    "ring-1 ring-line",
-                  )}
+                  className={cn("relative w-full overflow-hidden bg-well ring-1 ring-line", !shaped && "aspect-square")}
+                  style={shaped ? { aspectRatio: `${Math.max(1, photo.w)} / ${Math.max(1, photo.h)}` } : undefined}
                   aria-pressed={picking ? picked.includes(photo.id) : selectedId === photo.id || placingId === photo.id}
                   aria-label={`Place ${photo.name}`}
                 >
-                  <img src={photo.thumbUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+                  <img src={photo.thumbUrl} alt="" className={cn("h-full w-full", shaped ? "object-contain" : "object-cover")} draggable={false} />
                   {(picking && picked.includes(photo.id)) || selectedId === photo.id || placingId === photo.id || overId === photo.id || exchangePhotoId === photo.id ? (
                     <span className="pointer-events-none absolute inset-0 z-20 border-[3px] border-accent" />
                   ) : null}
