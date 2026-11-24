@@ -356,17 +356,26 @@ export const Library = memo(function Library({
             <span className="text-sm text-muted">
               {picked.length === 0 ? "Date for the selected photos" : `Date for ${picked.length} photos`}
             </span>
-            <input
-              className="field mt-2"
-              type="date"
-              value={dateDraft}
-              disabled={picked.length === 0}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDateDraft(value);
-                onDate(picked, value ? isoToStamp(value) : null);
-              }}
-            />
+            <div className="mt-1 flex items-end gap-1">
+              <input
+                className="field min-w-0 flex-1"
+                type="date"
+                value={dateDraft}
+                disabled={picked.length === 0}
+                onChange={(event) => setDateDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && picked.length > 0) onDate(picked, dateDraft ? isoToStamp(dateDraft) : null);
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-ink shrink-0 px-3"
+                disabled={picked.length === 0}
+                onClick={() => onDate(picked, dateDraft ? isoToStamp(dateDraft) : null)}
+              >
+                OK
+              </button>
+            </div>
           </label>
         </div>
       )}
