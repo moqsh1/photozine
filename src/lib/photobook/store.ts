@@ -91,6 +91,7 @@ type BookState = {
   makeGridAndStack: (pageIds?: string[]) => boolean;
   exchangePageLayouts: (pageIds?: string[]) => boolean;
   togglePageLock: (pageId?: string) => void;
+  lockAllPages: () => void;
   setPageSplit: (split: number | null, part?: "top" | "left" | "right" | "width") => void;
   assignPhoto: (pageId: string, index: number, photoId: string) => void;
   addPhotoToPage: (pageId: string, photoId: string) => void;
@@ -1218,6 +1219,16 @@ export const useBook = create<BookState>((set, get) => {
       activePageId: id,
     });
     persistLater();
+  },
+  lockAllPages: () => {
+    const pages = get().pages;
+    if (pages.length === 0 || pages.every((page) => page.locked)) {
+      flash("All pages are locked.");
+      return;
+    }
+    set({ pages: pages.map((page) => (page.locked ? page : { ...page, locked: true })) });
+    persistLater();
+    flash("All pages are locked.");
   },
   setPageSplit: (split, part = "top") => {
     const id = get().activePageId;
