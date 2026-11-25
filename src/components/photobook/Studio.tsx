@@ -796,6 +796,9 @@ export function Studio() {
                 pages={book.pages}
                 activePageId={page?.id ?? null}
                 orientation={book.orientation}
+                marginIn={book.marginIn}
+                gapIn={book.gapIn}
+                captionIn={book.captionIn}
                 photoById={photoById}
                 onSelect={book.selectPage}
                 onReorder={book.movePageTo}

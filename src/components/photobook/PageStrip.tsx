@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { GripVertical, Lock, LockOpen } from "lucide-react";
 import { adjustFilter } from "@/lib/photobook/adjust";
 import { PHOTO_MIME, SLOT_MIME } from "@/components/photobook/PageSheet";
-import { areasFor } from "@/lib/photobook/layouts";
+import { pageFrameRects, rectToPercent } from "@/lib/photobook/geometry";
 import { PAGE_INCHES, type Orientation, type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
@@ -12,6 +12,9 @@ type PageStripProps = {
   pages: Page[];
   activePageId: string | null;
   orientation: Orientation;
+  marginIn: number;
+  gapIn: number;
+  captionIn: number;
   photoById: Map<string, Photo>;
   onSelect: (id: string) => void;
   onReorder: (fromId: string, toId: string) => void;
@@ -32,6 +35,9 @@ export const PageStrip = memo(function PageStrip({
   pages,
   activePageId,
   orientation,
+  marginIn,
+  gapIn,
+  captionIn,
   photoById,
   onSelect,
   onReorder,
@@ -77,7 +83,19 @@ export const PageStrip = memo(function PageStrip({
       )}
       <div ref={rootRef} className="scroll-thin grid min-h-0 flex-1 grid-cols-3 content-start gap-1.5 overflow-x-hidden overflow-y-auto px-2 py-2" aria-label="Pages">
       {pages.map((page, index) => {
-        const areas = areasFor(page.layout, page.split, page.splitL, page.splitR, page.splitW);
+        const rects = pageFrameRects(
+          page.layout,
+          page.split,
+          page.splitL,
+          page.splitR,
+          page.splitW,
+          page.slots.map((slot) => (slot.photoId ? photoById.get(slot.photoId) : undefined)),
+          ratio.w,
+          ratio.h,
+          marginIn,
+          gapIn,
+          captionIn,
+        );
         const active = page.id === activePageId;
         return (
           <button
@@ -133,9 +151,11 @@ export const PageStrip = memo(function PageStrip({
               )}
               style={{ aspectRatio: `${ratio.w} / ${ratio.h}` }}
             >
-              {areas.map((area, slotIndex) => {
+              {rects.map((rect, slotIndex) => {
                 const photoId = page.slots[slotIndex]?.photoId;
                 const photo = photoId ? photoById.get(photoId) : undefined;
+                const box = rectToPercent(rect, ratio.w, ratio.h);
+                const captionFrac = Math.min(0.48, captionIn / Math.max(rect.h, 0.05));
                 return (
                   <span
                     key={slotIndex}
@@ -194,23 +214,19 @@ export const PageStrip = memo(function PageStrip({
                         : undefined
                     }
                     className={cn(
-                      "absolute overflow-hidden bg-well",
+                      "absolute overflow-hidden bg-page",
                       photo && "cursor-grab active:cursor-grabbing",
                       photo && overPhoto === photo.id && "ring-2 ring-accent ring-inset",
                     )}
-                    style={{
-                      left: `${area.x * 100}%`,
-                      top: `${area.y * 100}%`,
-                      width: `${area.w * 100}%`,
-                      height: `${area.h * 100}%`,
-                    }}
+                    style={box}
                   >
                     {photo && (
                       <img
                         src={photo.thumbUrl}
                         alt=""
-                        className="pointer-events-none h-full w-full object-cover"
+                        className="pointer-events-none absolute inset-x-0 top-0 w-full object-cover"
                         style={{
+                          height: `${(1 - captionFrac) * 100}%`,
                           objectPosition: `${((page.slots[slotIndex].panX + 1) / 2) * 100}% ${((page.slots[slotIndex].panY + 1) / 2) * 100}%`,
                           transform: `rotate(${(page.slots[slotIndex].turn ?? 0) * 90}deg) scale(${page.slots[slotIndex].zoom})`,
                           filter: adjustFilter(page.slots[slotIndex].adjust),
