@@ -791,7 +791,7 @@ export function Studio() {
           {paneOpen.pages && (
             <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[1] }}>
               <PaneTitle name="Pages" onHide={() => togglePane("pages")} />
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden bg-[#d7cbb8]">
               <PageStrip
                 pages={book.pages}
                 activePageId={page?.id ?? null}
