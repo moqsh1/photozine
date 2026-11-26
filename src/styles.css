@@ -233,6 +233,27 @@ body {
   background: var(--color-caption);
 }
 
+.scroll-pages {
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-ink) #cfc3b0;
+}
+
+.scroll-pages::-webkit-scrollbar {
+  width: 16px;
+}
+
+.scroll-pages::-webkit-scrollbar-thumb {
+  background: var(--color-ink);
+  border: 3px solid #cfc3b0;
+  border-radius: 999px;
+  background-clip: padding-box;
+  min-height: 140px;
+}
+
+.scroll-pages::-webkit-scrollbar-track {
+  background: #cfc3b0;
+}
+
 .safe-bottom {
   padding-bottom: max(0px, env(safe-area-inset-bottom));
 }

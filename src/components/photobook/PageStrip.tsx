@@ -81,7 +81,7 @@ export const PageStrip = memo(function PageStrip({
           Clear captions{pickedIds.length > 0 ? ` (${pickedIds.length})` : ""}
         </button>
       )}
-      <div ref={rootRef} className="scroll-thin grid min-h-0 flex-1 grid-cols-3 content-start gap-1.5 overflow-x-hidden overflow-y-auto px-2 py-2" aria-label="Pages">
+      <div ref={rootRef} className="scroll-pages grid min-h-0 flex-1 grid-cols-3 content-start gap-1.5 overflow-x-hidden overflow-y-auto px-2 py-2" aria-label="Pages">
       {pages.map((page, index) => {
         const rects = pageFrameRects(
           page.layout,
