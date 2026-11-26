@@ -70,6 +70,8 @@ export function Studio() {
   const [exchangeFrom, setExchangeFrom] = useState<{ pageId: string; index: number } | null>(null);
   const [pagePicking, setPagePicking] = useState(false);
   const [pickedPages, setPickedPages] = useState<string[]>([]);
+  const [lifting, setLifting] = useState(false);
+  const [liftPicks, setLiftPicks] = useState<{ pageId: string; index: number }[]>([]);
   const onPhotoSelection = useCallback((ids: string[]) => setPickedPhotos(ids), []);
   function releasePicks() {
     setExchangeOn(false);
@@ -822,6 +824,43 @@ export function Studio() {
                 onToggleExchange={() => {
                   setExchangeOn((on) => !on);
                   setExchangeFrom(null);
+                }}
+                lifting={lifting}
+                liftKeys={liftPicks.map((pick) => `${pick.pageId}|${pick.index}`)}
+                onToggleLiftMode={() => {
+                  setLifting((on) => !on);
+                  setLiftPicks([]);
+                }}
+                onToggleLift={(pageId, index) => {
+                  const page = book.pages.find((item) => item.id === pageId);
+                  const slot = page?.slots[index];
+                  const photo = slot?.photoId ? photoById.get(slot.photoId) : undefined;
+                  if (!page || !slot || !photo) return;
+                  if (page.locked) {
+                    complain("This page is locked.");
+                    return;
+                  }
+                  if (page.layout !== "three-banner" && page.layout !== "three-base" && page.layout !== "four") {
+                    complain("Pick a portrait from a banner, base, or grid page.");
+                    return;
+                  }
+                  const landscape = photo.w > photo.h;
+                  const portrait = (slot.turn ?? 0) % 2 === 1 ? landscape : !landscape;
+                  if (!portrait) {
+                    complain("Pick a portrait photo.");
+                    return;
+                  }
+                  setLiftPicks((current) => {
+                    const same = current.some((pick) => pick.pageId === pageId && pick.index === index);
+                    const rest = current.filter((pick) => pick.pageId !== pageId);
+                    return same ? rest : [...rest, { pageId, index }];
+                  });
+                }}
+                onLift={() => {
+                  if (book.liftPortraits(liftPicks)) {
+                    setLiftPicks([]);
+                    setLifting(false);
+                  }
                 }}
               />
               </div>

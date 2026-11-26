@@ -97,6 +97,7 @@ type BookState = {
   addPhotoToPage: (pageId: string, photoId: string) => void;
   arrangeByDate: (ids: string[]) => void;
   arrangeFromPage: () => void;
+  liftPortraits: (picks: { pageId: string; index: number }[]) => boolean;
   clearSlot: (pageId: string, index: number) => void;
   copySlot: () => void;
   cutSlot: () => void;
@@ -1446,6 +1447,62 @@ export const useBook = create<BookState>((set, get) => {
     });
     persistLater();
     flash(`Arranged ${ids.length} photos from this page onward.`);
+  },
+  liftPortraits: (picks) => {
+    const pages = get().pages;
+    const wanted = new Map<string, number[]>();
+    for (const pick of picks) {
+      const list = wanted.get(pick.pageId) ?? [];
+      if (!list.includes(pick.index)) list.push(pick.index);
+      wanted.set(pick.pageId, list);
+    }
+    if (wanted.size === 0) {
+      flash("Pick the portraits first.");
+      return false;
+    }
+    const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
+    const portrait = (slot: Slot) => {
+      if (!slot.photoId) return false;
+      const landscape = shape.get(slot.photoId) === true;
+      return (slot.turn ?? 0) % 2 === 1 ? landscape : !landscape;
+    };
+    const copy = (slot: Slot): Slot => ({ ...slot, adjust: slot.adjust ? { ...slot.adjust } : undefined });
+    const next: Page[] = [];
+    let made = 0;
+    let skipped = false;
+    for (const page of pages) {
+      const indexes = wanted.get(page.id);
+      if (!indexes?.length) {
+        next.push(page);
+        continue;
+      }
+      const source = page.layout === "three-banner" || page.layout === "three-base" || page.layout === "four";
+      const chosen = indexes
+        .filter((index) => page.slots[index]?.photoId && portrait(page.slots[index]))
+        .sort((a, b) => a - b);
+      if (page.locked || !source || chosen.length === 0) {
+        skipped = true;
+        next.push(page);
+        continue;
+      }
+      const drop = new Set(chosen.slice(0, 1));
+      const kept = page.slots.flatMap((slot, index) => (slot.photoId && !drop.has(index) ? [copy(slot)] : []));
+      const layout: LayoutId = page.layout === "four" ? "three-banner" : "two-rows";
+      next.push(withLayout({ ...page, slots: kept }, layout));
+      const slot = page.slots[chosen[0]];
+      const full = makePage("one");
+      full.slots[0] = copy(slot);
+      next.push(full);
+      made += 1;
+    }
+    if (made === 0) {
+      flash(skipped ? "Pick a portrait on a banner, base, or grid page." : "Pick the portraits first.");
+      return false;
+    }
+    set({ pages: next, selectedSlot: null });
+    persistLater();
+    flash(skipped ? `Made ${made} full pages. Some picks were left.` : `Made ${made} full pages.`);
+    return true;
   },
   clearSlot: (pageId, index) => {
     if (pageIsLocked(get().pages, pageId)) {

@@ -29,6 +29,11 @@ type PageStripProps = {
   exchanging: boolean;
   exchangeReady: boolean;
   onToggleExchange: () => void;
+  lifting: boolean;
+  liftKeys: string[];
+  onToggleLiftMode: () => void;
+  onToggleLift: (pageId: string, index: number) => void;
+  onLift: () => void;
 };
 
 export const PageStrip = memo(function PageStrip({
@@ -52,6 +57,11 @@ export const PageStrip = memo(function PageStrip({
   exchanging,
   exchangeReady,
   onToggleExchange,
+  lifting,
+  liftKeys,
+  onToggleLiftMode,
+  onToggleLift,
+  onLift,
 }: PageStripProps) {
   const ratio = PAGE_INCHES[orientation];
   const [overPhoto, setOverPhoto] = useState<string | null>(null);
@@ -75,6 +85,21 @@ export const PageStrip = memo(function PageStrip({
         >
           {exchanging ? (exchangeReady ? "Pick the other" : "Pick the first") : "Exchange frames"}
         </button>
+      </div>
+      <div className="flex gap-1 px-2 pt-1">
+        <button
+          type="button"
+          className={cn("btn min-w-0 flex-1 px-1", lifting ? "btn-ink" : "btn-quiet")}
+          aria-pressed={lifting}
+          onClick={onToggleLiftMode}
+        >
+          {lifting ? "Picking portraits" : "Pick portraits"}
+        </button>
+        {lifting && (
+          <button type="button" className="btn btn-ink min-w-0 flex-1 px-1" disabled={liftKeys.length === 0} onClick={onLift}>
+            Full page each{liftKeys.length > 0 ? ` (${liftKeys.length})` : ""}
+          </button>
+        )}
       </div>
       {picking && (
         <button type="button" className="btn btn-quiet mx-3 mt-2" disabled={pickedIds.length === 0} onClick={onClearPicked}>
@@ -161,7 +186,16 @@ export const PageStrip = memo(function PageStrip({
                     key={slotIndex}
                     data-frame-photo={photo ? "" : undefined}
                     draggable={Boolean(photo)}
-                    title={photo ? "Drag onto the selected page" : undefined}
+                    title={photo ? (lifting ? "Pick this portrait" : "Drag onto the selected page") : undefined}
+                    onClick={
+                      lifting && photo
+                        ? (event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            onToggleLift(page.id, slotIndex);
+                          }
+                        : undefined
+                    }
                     onDragStart={
                       photo
                         ? (event) => {
@@ -217,6 +251,7 @@ export const PageStrip = memo(function PageStrip({
                       "absolute overflow-hidden bg-page",
                       photo && "cursor-grab active:cursor-grabbing",
                       photo && overPhoto === photo.id && "ring-2 ring-accent ring-inset",
+                      lifting && liftKeys.includes(`${page.id}|${slotIndex}`) && "z-10 ring-2 ring-accent ring-inset",
                     )}
                     style={box}
                   >
