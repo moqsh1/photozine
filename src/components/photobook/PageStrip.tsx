@@ -96,7 +96,12 @@ export const PageStrip = memo(function PageStrip({
           {lifting ? "Picking portraits" : "Pick portraits"}
         </button>
         {lifting && (
-          <button type="button" className="btn btn-ink min-w-0 flex-1 px-1" disabled={liftKeys.length === 0} onClick={onLift}>
+          <button
+            type="button"
+            className={cn("btn min-w-0 flex-1 px-1", liftKeys.length > 0 ? "btn-ink" : "btn-quiet")}
+            disabled={liftKeys.length === 0}
+            onClick={onLift}
+          >
             Full page each{liftKeys.length > 0 ? ` (${liftKeys.length})` : ""}
           </button>
         )}
@@ -159,7 +164,16 @@ export const PageStrip = memo(function PageStrip({
                 onAddPhoto(page.id, photoId);
               }
             }}
-            onClick={() => (picking ? onTogglePick(page.id) : onSelect(page.id))}
+            onClick={(event) => {
+              if (lifting) {
+                const frame = (event.target as HTMLElement).closest("[data-lift-slot]");
+                if (!frame) return;
+                onToggleLift(page.id, Number(frame.getAttribute("data-lift-slot")));
+                return;
+              }
+              if (picking) onTogglePick(page.id);
+              else onSelect(page.id);
+            }}
             className={cn(
               "thumb-cell w-full shrink-0 text-left",
               active ? "opacity-100" : "opacity-80",
@@ -185,17 +199,9 @@ export const PageStrip = memo(function PageStrip({
                   <span
                     key={slotIndex}
                     data-frame-photo={photo ? "" : undefined}
-                    draggable={Boolean(photo)}
+                    data-lift-slot={photo ? slotIndex : undefined}
+                    draggable={Boolean(photo) && !lifting}
                     title={photo ? (lifting ? "Pick this portrait" : "Drag onto the selected page") : undefined}
-                    onClick={
-                      lifting && photo
-                        ? (event) => {
-                            event.stopPropagation();
-                            event.preventDefault();
-                            onToggleLift(page.id, slotIndex);
-                          }
-                        : undefined
-                    }
                     onDragStart={
                       photo
                         ? (event) => {
@@ -249,12 +255,18 @@ export const PageStrip = memo(function PageStrip({
                     }
                     className={cn(
                       "absolute overflow-hidden bg-page",
-                      photo && "cursor-grab active:cursor-grabbing",
+                      photo && !lifting && "cursor-grab active:cursor-grabbing",
+                      lifting && photo && "cursor-pointer",
                       photo && overPhoto === photo.id && "ring-2 ring-accent ring-inset",
-                      lifting && liftKeys.includes(`${page.id}|${slotIndex}`) && "z-10 ring-2 ring-accent ring-inset",
+                      lifting && liftKeys.includes(`${page.id}|${slotIndex}`) && "z-10 ring-4 ring-accent ring-inset",
                     )}
                     style={box}
                   >
+                    {lifting && liftKeys.includes(`${page.id}|${slotIndex}`) && (
+                      <span className="pointer-events-none absolute top-0.5 right-0.5 z-20 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] text-page">
+                        ✓
+                      </span>
+                    )}
                     {photo && (
                       <img
                         src={photo.thumbUrl}
