@@ -131,9 +131,9 @@ export const PageStrip = memo(function PageStrip({
           <button
             key={page.id}
             type="button"
-            draggable
+            draggable={!lifting}
             onDragStart={(event) => {
-              if ((event.target as HTMLElement).closest("[data-frame-photo]")) {
+              if (lifting) {
                 event.preventDefault();
                 return;
               }
@@ -164,13 +164,18 @@ export const PageStrip = memo(function PageStrip({
                 onAddPhoto(page.id, photoId);
               }
             }}
-            onClick={(event) => {
-              if (lifting) {
-                const frame = (event.target as HTMLElement).closest("[data-lift-slot]");
-                if (!frame) return;
-                onToggleLift(page.id, Number(frame.getAttribute("data-lift-slot")));
-                return;
-              }
+            onPointerDown={(event) => {
+              if (!lifting) return;
+              const hit = document
+                .elementsFromPoint(event.clientX, event.clientY)
+                .find((node) => node instanceof HTMLElement && node.hasAttribute("data-lift-slot"));
+              if (!(hit instanceof HTMLElement)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleLift(page.id, Number(hit.getAttribute("data-lift-slot")));
+            }}
+            onClick={() => {
+              if (lifting) return;
               if (picking) onTogglePick(page.id);
               else onSelect(page.id);
             }}

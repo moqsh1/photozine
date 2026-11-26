@@ -1460,12 +1460,6 @@ export const useBook = create<BookState>((set, get) => {
       flash("Pick the portraits first.");
       return false;
     }
-    const shape = new Map(get().photos.map((photo) => [photo.id, photo.w > photo.h]));
-    const portrait = (slot: Slot) => {
-      if (!slot.photoId) return false;
-      const landscape = shape.get(slot.photoId) === true;
-      return (slot.turn ?? 0) % 2 === 1 ? landscape : !landscape;
-    };
     const copy = (slot: Slot): Slot => ({ ...slot, adjust: slot.adjust ? { ...slot.adjust } : undefined });
     const next: Page[] = [];
     let made = 0;
@@ -1478,9 +1472,15 @@ export const useBook = create<BookState>((set, get) => {
       }
       const source = page.layout === "three-banner" || page.layout === "three-base" || page.layout === "four";
       const chosen = indexes
-        .filter((index) => page.slots[index]?.photoId && portrait(page.slots[index]))
+        .filter((index) => {
+          if (!page.slots[index]?.photoId) return false;
+          if (page.layout === "four") return true;
+          if (page.layout === "three-banner") return index > 0;
+          if (page.layout === "three-base") return index < 2;
+          return false;
+        })
         .sort((a, b) => a - b);
-      if (page.locked || !source || chosen.length === 0) {
+      if (!source || chosen.length === 0) {
         skipped = true;
         next.push(page);
         continue;

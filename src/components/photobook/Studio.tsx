@@ -280,6 +280,31 @@ export function Studio() {
     }, 5000);
   }
 
+  function toggleLift(pageId: string, index: number) {
+    const target = book.pages.find((item) => item.id === pageId);
+    const slot = target?.slots[index];
+    if (!target || !slot?.photoId) return;
+    if (target.layout !== "three-banner" && target.layout !== "three-base" && target.layout !== "four") {
+      complain("Pick a portrait from a banner, base, or grid page.");
+      return;
+    }
+    const portraitSlot =
+      target.layout === "four" ||
+      (target.layout === "three-banner" && index > 0) ||
+      (target.layout === "three-base" && index < 2);
+    if (!portraitSlot) {
+      complain("Pick a portrait photo.");
+      return;
+    }
+    if (book.activePageId !== pageId) book.selectPage(pageId);
+    book.selectSlot(index);
+    setLiftPicks((current) => {
+      const same = current.some((pick) => pick.pageId === pageId && pick.index === index);
+      const rest = current.filter((pick) => pick.pageId !== pageId);
+      return same ? rest : [...rest, { pageId, index }];
+    });
+  }
+
   function openExport() {
     setExportMode("current");
     setPicked(page ? [page.id] : []);
@@ -831,31 +856,7 @@ export function Studio() {
                   setLifting((on) => !on);
                   setLiftPicks([]);
                 }}
-                onToggleLift={(pageId, index) => {
-                  const page = book.pages.find((item) => item.id === pageId);
-                  const slot = page?.slots[index];
-                  const photo = slot?.photoId ? photoById.get(slot.photoId) : undefined;
-                  if (!page || !slot || !photo) return;
-                  if (page.locked) {
-                    complain("This page is locked.");
-                    return;
-                  }
-                  if (page.layout !== "three-banner" && page.layout !== "three-base" && page.layout !== "four") {
-                    complain("Pick a portrait from a banner, base, or grid page.");
-                    return;
-                  }
-                  const landscape = photo.w > photo.h;
-                  const portrait = (slot.turn ?? 0) % 2 === 1 ? landscape : !landscape;
-                  if (!portrait) {
-                    complain("Pick a portrait photo.");
-                    return;
-                  }
-                  setLiftPicks((current) => {
-                    const same = current.some((pick) => pick.pageId === pageId && pick.index === index);
-                    const rest = current.filter((pick) => pick.pageId !== pageId);
-                    return same ? rest : [...rest, { pageId, index }];
-                  });
-                }}
+                onToggleLift={toggleLift}
                 onLift={() => {
                   if (book.liftPortraits(liftPicks)) {
                     setLiftPicks([]);
@@ -904,7 +905,12 @@ export function Studio() {
                     pageSelected={book.selectedSlot == null}
                     placing={Boolean(book.placingId)}
                     onSelectSlot={(index) => {
-                      if (!exchangeOn || !page) {
+                      if (!page) return;
+                      if (lifting) {
+                        toggleLift(page.id, index);
+                        return;
+                      }
+                      if (!exchangeOn) {
                         book.selectSlot(index);
                         return;
                       }
