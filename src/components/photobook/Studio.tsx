@@ -789,7 +789,7 @@ export function Studio() {
             />
           )}
           {paneOpen.pages && (
-            <aside className="flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[1] }}>
+            <aside className="flex h-full min-w-0 shrink-0 flex-col overflow-hidden bg-surface" style={{ width: paneW[1] }}>
               <PaneTitle name="Pages" onHide={() => togglePane("pages")} />
               <div className="min-h-0 flex-1 overflow-hidden bg-[#d7cbb8]">
               <PageStrip
@@ -928,7 +928,7 @@ export function Studio() {
           />
           )}
           {paneOpen.settings && (
-          <aside className="relative flex h-full shrink-0 flex-col bg-surface" style={{ width: paneW[2] }}>
+          <aside className="relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden bg-surface" style={{ width: paneW[2] }}>
             <PaneTitle name="Settings" onHide={() => togglePane("settings")} />
             <div className="min-h-0 flex-1 overflow-hidden">{inspector}</div>
           </aside>
@@ -1192,23 +1192,27 @@ function PaneHandle({
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
+        const handle = event.currentTarget;
+        handle.setPointerCapture(event.pointerId);
         const origin = get();
         const startX = event.clientX;
+        const scroller = handle.closest(".workspace-pan") as HTMLElement | null;
+        const startScroll = scroller?.scrollLeft ?? 0;
         const previous = document.body.style.userSelect;
         document.body.style.userSelect = "none";
         const move = (pointer: PointerEvent) => {
-          pointer.preventDefault();
-          set(clampPane(origin + sign * (pointer.clientX - startX), min, max));
+          const scrollDelta = (scroller?.scrollLeft ?? 0) - startScroll;
+          set(clampPane(origin + sign * (pointer.clientX - startX + scrollDelta), min, max));
         };
         const end = () => {
           document.body.style.userSelect = previous;
-          window.removeEventListener("pointermove", move);
-          window.removeEventListener("pointerup", end);
-          window.removeEventListener("pointercancel", end);
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", end);
+          handle.removeEventListener("pointercancel", end);
         };
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", end);
-        window.addEventListener("pointercancel", end);
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", end);
+        handle.addEventListener("pointercancel", end);
       }}
     >
       <span className="absolute inset-y-0 left-1/2 w-1.5 -translate-x-1/2 rounded-full bg-line group-hover:bg-accent group-active:bg-accent" />
