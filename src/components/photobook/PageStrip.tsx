@@ -3,10 +3,19 @@ import { GripVertical, Lock, LockOpen } from "lucide-react";
 import { adjustFilter } from "@/lib/photobook/adjust";
 import { PHOTO_MIME, SLOT_MIME } from "@/components/photobook/PageSheet";
 import { pageFrameRects, rectToPercent } from "@/lib/photobook/geometry";
-import { PAGE_INCHES, type Orientation, type Page, type Photo } from "@/lib/photobook/types";
+import { PAGE_INCHES, type LayoutId, type Orientation, type Page, type Photo } from "@/lib/photobook/types";
 import { cn } from "@/lib/cn";
 
 const PAGE_MIME = "application/x-folio-page";
+
+const LAYOUT_FILTERS: { id: "all" | LayoutId; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "one", label: "Full" },
+  { id: "two-rows", label: "Stack" },
+  { id: "three-banner", label: "Banner" },
+  { id: "three-base", label: "Base" },
+  { id: "four", label: "Grid" },
+];
 
 type PageStripProps = {
   pages: Page[];
@@ -66,6 +75,10 @@ export const PageStrip = memo(function PageStrip({
   const ratio = PAGE_INCHES[orientation];
   const [overPhoto, setOverPhoto] = useState<string | null>(null);
   const [overPage, setOverPage] = useState<string | null>(null);
+  const [layoutFilter, setLayoutFilter] = useState<(typeof LAYOUT_FILTERS)[number]["id"]>("all");
+  const visible = pages.flatMap((page, index) =>
+    layoutFilter === "all" || page.layout === layoutFilter ? [{ page, number: index + 1 }] : [],
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const node = rootRef.current?.querySelector("[aria-current='page']");
@@ -73,6 +86,19 @@ export const PageStrip = memo(function PageStrip({
   }, [activePageId]);
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-wrap gap-1 px-2 pt-2" role="group" aria-label="Show pages by layout">
+        {LAYOUT_FILTERS.map((filter) => (
+          <button
+            key={filter.id}
+            type="button"
+            aria-pressed={layoutFilter === filter.id}
+            className={cn("btn px-1.5 py-0.5 text-[11px]", layoutFilter === filter.id ? "btn-ink" : "btn-quiet")}
+            onClick={() => setLayoutFilter(filter.id)}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
       <div className="flex gap-1 px-2 pt-2">
         <button type="button" className={cn("btn min-w-0 flex-1 px-1", picking ? "btn-ink" : "btn-quiet")} onClick={() => onPickMode(!picking)}>
           {picking ? "Done" : "Select pages"}
@@ -112,7 +138,10 @@ export const PageStrip = memo(function PageStrip({
         </button>
       )}
       <div ref={rootRef} className="scroll-pages grid min-h-0 flex-1 grid-cols-3 content-start gap-1.5 overflow-x-hidden overflow-y-auto px-2 py-2" aria-label="Pages">
-      {pages.map((page, index) => {
+      {visible.length === 0 ? (
+        <p className="col-span-3 px-1 py-4 text-center text-xs text-muted">No {layoutFilter === "all" ? "" : LAYOUT_FILTERS.find((filter) => filter.id === layoutFilter)?.label} pages.</p>
+      ) : null}
+      {visible.map(({ page, number }) => {
         const rects = pageFrameRects(
           page.layout,
           page.split,
@@ -138,7 +167,7 @@ export const PageStrip = memo(function PageStrip({
                 return;
               }
               event.dataTransfer.setData(PAGE_MIME, page.id);
-              event.dataTransfer.setData("text/plain", String(index + 1));
+              event.dataTransfer.setData("text/plain", String(number));
               event.dataTransfer.effectAllowed = "move";
             }}
             onDragOver={(event) => {
@@ -186,7 +215,7 @@ export const PageStrip = memo(function PageStrip({
             )}
             aria-current={active ? "page" : undefined}
             aria-pressed={picking ? pickedIds.includes(page.id) : undefined}
-            aria-label={`Page ${index + 1}`}
+            aria-label={`Page ${number}`}
           >
             <div
               className={cn(
@@ -309,7 +338,7 @@ export const PageStrip = memo(function PageStrip({
             </div>
             <span className="mt-1 flex cursor-grab items-center justify-center gap-1 text-xs text-muted tabular-nums active:cursor-grabbing">
               <GripVertical className="size-3.5" aria-hidden="true" />
-              {index + 1}
+              {number}
               {picking && pickedIds.includes(page.id) ? " ✓" : ""}
             </span>
           </button>
