@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { PHOTO_MIME } from "@/components/photobook/PageSheet";
 import { getBlob, getThumbBlob } from "@/lib/photobook/db";
+import { deliverFile } from "@/lib/photobook/download";
+import { zipStore } from "@/lib/photobook/zip";
 import { duplicateIds, imageHash } from "@/lib/photobook/dupes";
 import { stampToIso, isoToStamp, formatHindiDate, formatHindiMonth } from "@/lib/photobook/date";
 import { type Page, type Photo } from "@/lib/photobook/types";
@@ -29,6 +31,50 @@ type LibraryProps = {
   exchangePhotoId: string | null;
   onExchange: (photoId: string) => void;
 };
+
+function jpgName(name: string, used: Set<string>) {
+  const base = name.replace(/\.[a-z0-9]+$/i, "").replace(/[^\w\- ]+/g, "").trim() || "photo";
+  let file = `${base}.jpg`;
+  let n = 2;
+  while (used.has(file.toLowerCase())) {
+    file = `${base}-${n}.jpg`;
+    n += 1;
+  }
+  used.add(file.toLowerCase());
+  return file;
+}
+
+async function asJpeg(blob: Blob): Promise<Blob> {
+  if (blob.type === "image/jpeg" || blob.type === "image/jpg") return blob;
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("unreadable"));
+      img.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || 1;
+    canvas.height = image.naturalHeight || 1;
+    canvas.getContext("2d")?.drawImage(image, 0, 0);
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.95));
+    return out ?? blob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function saveLink(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 function usedIds(signature: string) {
   const ids = new Set<string>();
@@ -79,6 +125,8 @@ export const Library = memo(function Library({
   const [dupes, setDupes] = useState<string[]>([]);
   const [dupeReports, setDupeReports] = useState<{ times: number; pages: number[]; loose: number; ids: string[] }[]>([]);
   const [checking, setChecking] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"jpg" | "zip" | null>(null);
+  const [exportNote, setExportNote] = useState("");
   const [shaped, setShaped] = useState(() => {
     try {
       return localStorage.getItem("pz-library-shape") === "1";
@@ -92,6 +140,51 @@ export const Library = memo(function Library({
   useEffect(() => {
     onSelection(picking ? picked : []);
   }, [onSelection, picking, picked]);
+
+  async function exportSelected(kind: "jpg" | "zip") {
+    const chosen = photos.filter((photo) => picked.includes(photo.id));
+    if (chosen.length === 0) return;
+    setExporting(kind);
+    setExportNote("");
+    try {
+      const used = new Set<string>();
+      const files: { name: string; blob: Blob }[] = [];
+      for (const photo of chosen) {
+        const blob = await getBlob(photo.id);
+        if (!blob) continue;
+        files.push({ name: jpgName(photo.name, used), blob: await asJpeg(blob) });
+      }
+      if (files.length === 0) {
+        setExportNote("Those photos are not on this device yet.");
+        return;
+      }
+      if (kind === "zip") {
+        const entries = await Promise.all(
+          files.map(async (file) => ({ name: file.name, data: new Uint8Array(await file.blob.arrayBuffer()) })),
+        );
+        const bytes = zipStore(entries);
+        const copy = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(copy).set(bytes);
+        const how = await deliverFile(new Blob([copy], { type: "application/zip" }), "photozine-photos.zip");
+        setExportNote(how === "cancelled" ? "Export cancelled." : `ZIP of ${files.length} photos is ready.`);
+        return;
+      }
+      if (files.length === 1) {
+        const how = await deliverFile(files[0].blob, files[0].name);
+        setExportNote(how === "cancelled" ? "Export cancelled." : `Saved ${files[0].name}.`);
+        return;
+      }
+      for (const file of files) {
+        saveLink(file.blob, file.name);
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+      setExportNote(`Started ${files.length} JPG downloads. Allow multiple downloads if the browser asks.`);
+    } catch {
+      setExportNote("Could not export those photos.");
+    } finally {
+      setExporting(null);
+    }
+  }
   const dupeNote = useMemo(() => {
     const notes = new Map<string, string>();
     for (const report of dupeReports) {
@@ -397,6 +490,15 @@ export const Library = memo(function Library({
               </button>
             </div>
           </label>
+          <div className="mt-2 flex gap-1">
+            <button type="button" className="btn btn-ink min-w-0 flex-1 px-1" disabled={picked.length === 0 || exporting != null} onClick={() => void exportSelected("jpg")}>
+              {exporting === "jpg" ? "Exporting…" : "Export JPG"}
+            </button>
+            <button type="button" className="btn btn-quiet min-w-0 flex-1 px-1" disabled={picked.length === 0 || exporting != null} onClick={() => void exportSelected("zip")}>
+              {exporting === "zip" ? "Zipping…" : "Export ZIP"}
+            </button>
+          </div>
+          {exportNote && <p className="mt-1 text-xs text-muted">{exportNote}</p>}
         </div>
       )}
       <p className="mt-1 px-3 text-xs text-muted">Drag a photo onto another to change their order.</p>
