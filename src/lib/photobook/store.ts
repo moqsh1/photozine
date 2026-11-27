@@ -193,6 +193,25 @@ function bookIsEmpty(pages: Page[]) {
   return pages.every((page) => page.slots.every((slot) => !slot.photoId));
 }
 
+function placedSlot(pages: Page[], photoId: string): Slot | null {
+  for (const page of pages) {
+    for (const slot of page.slots) {
+      if (slot.photoId === photoId) return slot;
+    }
+  }
+  return null;
+}
+
+function captionFrom(slot: Slot | null, takenAt: number | null) {
+  if (!slot) return { takenAt, caption: captionForDate("", takenAt).slice(0, 140), noCaption: false, yearOnly: false };
+  return {
+    takenAt: slot.takenAt ?? takenAt,
+    caption: slot.caption,
+    noCaption: slot.noCaption === true,
+    yearOnly: slot.yearOnly === true,
+  };
+}
+
 function pageIsLocked(pages: Page[], id: string | null | undefined) {
   return Boolean(id && pages.some((page) => page.id === id && page.locked));
 }
@@ -1251,13 +1270,21 @@ export const useBook = create<BookState>((set, get) => {
       flash("This page is locked.");
       return;
     }
-    const takenAt = get().photos.find((photo) => photo.id === photoId)?.takenAt ?? null;
+    const prior = placedSlot(get().pages, photoId);
+    const photoAt = get().photos.find((photo) => photo.id === photoId)?.takenAt ?? null;
+    const carried = captionFrom(prior, photoAt);
+    const cleared = get().pages.map((page) => ({
+      ...page,
+      slots: page.slots.map((slot, slotIndex) => (page.id === pageId && slotIndex === index ? slot : slot.photoId === photoId ? emptySlot() : slot)),
+    }));
     set({
-      pages: patchSlot(get().pages, pageId, index, (slot) => ({
+      pages: patchSlot(cleared, pageId, index, (slot) => ({
         ...slot,
         photoId,
-        takenAt,
-        caption: captionForDate(slot.caption, takenAt).slice(0, 140),
+        takenAt: carried.takenAt,
+        caption: carried.caption,
+        noCaption: carried.noCaption,
+        yearOnly: carried.yearOnly,
         zoom: 1,
         panX: 0,
         panY: 0,
@@ -1275,6 +1302,7 @@ export const useBook = create<BookState>((set, get) => {
       flash("This page is locked.");
       return;
     }
+    const prior = placedSlot(get().pages, photoId);
     const cleared = get().pages.map((page) => ({
       ...page,
       slots: page.slots.map((slot) => (slot.photoId === photoId ? emptySlot() : slot)),
@@ -1282,15 +1310,16 @@ export const useBook = create<BookState>((set, get) => {
     const index = cleared.findIndex((page) => page.id === pageId);
     if (index < 0) return;
     const empty = cleared[index].slots.findIndex((slot) => !slot.photoId);
+    const carried = captionFrom(prior, photo.takenAt);
     if (empty >= 0) {
-      const takenAt = photo.takenAt;
       set({
         pages: patchSlot(cleared, pageId, empty, (slot) => ({
           ...slot,
           photoId,
-          takenAt,
-          caption: captionForDate("", takenAt).slice(0, 140),
-          noCaption: false,
+          takenAt: carried.takenAt,
+          caption: carried.caption,
+          noCaption: carried.noCaption,
+          yearOnly: carried.yearOnly,
           zoom: 1,
           panX: 0,
           panY: 0,
@@ -1306,8 +1335,10 @@ export const useBook = create<BookState>((set, get) => {
     made.slots[0] = {
       ...made.slots[0],
       photoId,
-      takenAt: photo.takenAt,
-      caption: captionForDate("", photo.takenAt).slice(0, 140),
+      takenAt: carried.takenAt,
+      caption: carried.caption,
+      noCaption: carried.noCaption,
+      yearOnly: carried.yearOnly,
     };
     const pages = cleared.slice();
     pages.splice(index + 1, 0, made);
