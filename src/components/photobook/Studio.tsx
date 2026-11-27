@@ -54,8 +54,11 @@ export function Studio() {
   }
   function driveClock(label: string, stamp: number | null) {
     if (!stamp) return `${label} —`;
-    const time = new Date(stamp).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-    return `${label} ${time}`;
+    const date = new Date(stamp);
+    const months = ["जनवरी", "फरवरी", "मार्च", "अप्रैल", "मई", "जून", "जुलाई", "अगस्त", "सितंबर", "अक्टूबर", "नवंबर", "दिसंबर"];
+    const day = String(date.getDate()).padStart(2, "0");
+    const time = date.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+    return `${label} ${day} ${months[date.getMonth()]} ${date.getFullYear()}, ${time}`;
   }
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMode, setExportMode] = useState<ExportMode>("current");
