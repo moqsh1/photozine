@@ -127,6 +127,7 @@ export const Library = memo(function Library({
   const [checking, setChecking] = useState<string | null>(null);
   const [exporting, setExporting] = useState<"jpg" | "zip" | null>(null);
   const [exportNote, setExportNote] = useState("");
+  const [captionView, setCaptionView] = useState<"any" | "with" | "none">("any");
   const [shaped, setShaped] = useState(() => {
     try {
       return localStorage.getItem("pz-library-shape") === "1";
@@ -276,6 +277,8 @@ export const Library = memo(function Library({
   const needle = query.trim().toLowerCase();
   const visible = ordered.filter((photo) => {
     if (filter === "loose" && placed.has(photo.id)) return false;
+    if (captionView === "with" && !captionOf.get(photo.id)) return false;
+    if (captionView === "none" && captionOf.get(photo.id)) return false;
     if (needle && !photo.name.toLowerCase().includes(needle)) return false;
     return true;
   });
@@ -378,6 +381,17 @@ export const Library = memo(function Library({
         </FilterButton>
         <FilterButton active={filter === "loose"} onClick={() => onFilter("loose")}>
           Not on a page
+        </FilterButton>
+      </div>
+      <div className="mt-1 flex gap-1 px-3" role="group" aria-label="Caption filter">
+        <FilterButton active={captionView === "any"} onClick={() => setCaptionView("any")}>
+          Any caption
+        </FilterButton>
+        <FilterButton active={captionView === "with"} onClick={() => setCaptionView("with")}>
+          With caption
+        </FilterButton>
+        <FilterButton active={captionView === "none"} onClick={() => setCaptionView("none")}>
+          No caption
         </FilterButton>
       </div>
       <div className="mt-1 flex gap-1 px-3">
