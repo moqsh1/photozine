@@ -76,6 +76,8 @@ export const PageStrip = memo(function PageStrip({
   const [overPhoto, setOverPhoto] = useState<string | null>(null);
   const [overPage, setOverPage] = useState<string | null>(null);
   const [layoutFilter, setLayoutFilter] = useState<(typeof LAYOUT_FILTERS)[number]["id"]>("all");
+  const layoutCount = new Map<string, number>();
+  for (const page of pages) layoutCount.set(page.layout, (layoutCount.get(page.layout) ?? 0) + 1);
   const visible = pages.flatMap((page, index) =>
     layoutFilter === "all" || page.layout === layoutFilter ? [{ page, number: index + 1 }] : [],
   );
@@ -92,10 +94,11 @@ export const PageStrip = memo(function PageStrip({
             key={filter.id}
             type="button"
             aria-pressed={layoutFilter === filter.id}
-            className={cn("btn px-1.5 py-0.5 text-[11px]", layoutFilter === filter.id ? "btn-ink" : "btn-quiet")}
+            className={cn("btn !gap-0 flex-col px-1.5 py-0.5 text-[11px] leading-none", layoutFilter === filter.id ? "btn-ink" : "btn-quiet")}
             onClick={() => setLayoutFilter(filter.id)}
           >
-            {filter.label}
+            <span>{filter.label}</span>
+            <span>({filter.id === "all" ? pages.length : (layoutCount.get(filter.id) ?? 0)})</span>
           </button>
         ))}
       </div>
